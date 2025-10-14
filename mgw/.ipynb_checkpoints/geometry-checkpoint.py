@@ -85,13 +85,13 @@ def geodesic_distances_fast(coords: np.ndarray,
     # 1) Vectorized edge weights on the device of G_tensors
     device = G_tensors.device
     dtype  = G_tensors.dtype
-
+    
     rows, cols = knn_csr.nonzero()               # numpy arrays
     rows_t = torch.from_numpy(rows).to(device)
     cols_t = torch.from_numpy(cols).to(device)
-
+    
     x = torch.from_numpy(coords).to(device=device, dtype=dtype)  # (n,2)
-
+    
     # Differences per edge: Δx = x_j - x_i
     dx = x[cols_t] - x[rows_t]                                  # (E,2)
 
@@ -99,23 +99,24 @@ def geodesic_distances_fast(coords: np.ndarray,
     Gi = G_tensors[rows_t]                                      # (E,2,2)
     Gj = G_tensors[cols_t]                                      # (E,2,2)
     Gm = 0.5 * (Gi + Gj)                                        # (E,2,2)
-
+    
     # Quadratic form Δx^T Gm Δx, then sqrt
     # einsum: (E,2),(E,2,2),(E,2) -> (E,)
     q = torch.einsum('ei,eij,ej->e', dx, Gm, dx).clamp_min(0.0)
     w = torch.sqrt(q)
-
+    
     # Move once to CPU
     weights = w.detach().cpu().numpy()
-
+    
     # 2) Build sparse weight matrix in one go
     W = csr_matrix((weights, (rows, cols)), shape=knn_csr.shape)
     if make_symmetric:
         # ensure symmetry cheaply (prefer min to avoid double counting)
         W = W.minimum(W.T)
-
+    
     # 3) All-pairs shortest paths (Dijkstra is the fastest in SciPy)
     dist = dijkstra(W, directed=False, return_predecessors=return_predecessors)
+    
     return dist  # (n,n) or (predecessors, dist) if requested
 
 def pairwise_squared_geodesic(dist_matrix: np.ndarray):
