@@ -23,7 +23,7 @@ def project_informative_features(
     *,
     X_layer=None, Z_layer=None,
     PCA_comp=20, CCA_comp=5,
-    n_downsample=8000,
+    n_downsample=10000,
     log1p_features=True,
     feeler_epsilon=1e-3,
     verbose=True,
@@ -41,8 +41,9 @@ def project_informative_features(
     
     xs = normalize_coords_to_unit_square(st_xy)
     xt = normalize_coords_to_unit_square(sm_xy)
-    X_pca = pca_from(adata_X, layer=X_layer, n_comps=PCA_comp, log1p=log1p_features)
-    Z_pca = pca_from(adata_Z, layer=Z_layer, n_comps=PCA_comp, log1p=log1p_features)
+    
+    X_pca = get_or_compute_pca(adata_X, layer=X_layer, n_comps=PCA_comp, log1p=log1p_features)
+    Z_pca = get_or_compute_pca(adata_Z, layer=Z_layer, n_comps=PCA_comp, log1p=log1p_features)
     
     if verbose:
         print("PCA shapes -> X:", X_pca.shape, "Z:", Z_pca.shape)
@@ -50,14 +51,18 @@ def project_informative_features(
     nX = xs.shape[0]; nZ = xt.shape[0]
     
     if n_downsample is not None:
-        kZ = min(n_downsample, nZ)
         rng = np.random.default_rng(42)
+        
+        kZ = min([n_downsample, nZ])
         idxZ = rng.choice(nZ, size=kZ, replace=False)
         xt_gw   = xt[idxZ]
         Zpca_gw = Z_pca[idxZ]
-        # On X-side we typically keep all (the smaller side).
-        xs_gw   = xs
-        Xpca_gw = X_pca
+        
+        kX = min([n_downsample, nX])
+        idxX = rng.choice(nX, size=kX, replace=False)
+        xs_gw   = xs[idxX]
+        Xpca_gw = X_pca[idxX]
+        
         if verbose:
             print(f"Feeler GW sizes: X-side {xs_gw.shape[0]}, Z-side {xt_gw.shape[0]}")
     else:
@@ -90,13 +95,14 @@ def project_informative_features(
     print('Solving feeler feature alignment.')
     gw_params = dict(verbose=True, inner_maxit=2000, outer_maxit=2000,
                  inner_tol=1e-6, outer_tol=1e-6, epsilon=feeler_epsilon)
+    
     P = solve_gw_ott(C1, C2, **gw_params)
     Z_bary_on_X = _barycentric_right(P, Zpca_gw)   # shape (|X_gw|, dZ)
     
-    X_scaler = StandardScaler(with_mean=True, with_std=True).fit(X_pca)
+    X_scaler = StandardScaler(with_mean=True, with_std=True).fit(Xpca_gw)
     Z_scaler = StandardScaler(with_mean=True, with_std=True).fit(Z_bary_on_X)
     
-    X_std = X_scaler.transform(X_pca)
+    X_std = X_scaler.transform(Xpca_gw)
     Z_std = Z_scaler.transform(Z_bary_on_X)
     
     n_comp = min(CCA_comp, X_std.shape[1], Z_std.shape[1])
@@ -235,3 +241,15 @@ def ann_load(path, layer=None):
     X = _to_dense(adata.layers[layer]) if (layer is not None and layer in adata.layers) else _to_dense(adata.X)
     XY = np.asarray(adata.obsm["spatial"], dtype=np.float64)
     return XY, X, adata
+
+def get_or_compute_pca(adata, layer=None, n_comps=30, log1p=True, key="X_pca"):
+    """Return existing PCA if present; otherwise compute it."""
+    # Check if PCA already exists in adata.obsm
+    if key in adata.obsm and adata.obsm[key].shape[1] >= n_comps:
+        print(f"Using precomputed PCA ({adata.obsm[key].shape[1]} comps).")
+        X_pca = np.asarray(adata.obsm[key][:, :n_comps])
+    else:
+        print(f"Computing PCA ({n_comps} comps)...")
+        X_pca = pca_from(adata, layer=layer, n_comps=n_comps, log1p=log1p)
+        adata.obsm[key] = X_pca  # optionally cache it
+    return X_pca

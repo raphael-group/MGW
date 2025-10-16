@@ -3,6 +3,129 @@ from sklearn.metrics import adjusted_mutual_info_score
 from sklearn.metrics.cluster import adjusted_rand_score
 import numpy as np
 from mgw import plotting
+from sklearn.metrics.pairwise import cosine_similarity
+
+
+'''
+def expression_cosine_similarity(X, Z, P=None, sample_pairs=50000, random_state=0):
+    """
+    Compute cosine similarity between expression profiles of aligned spots.
+    Parameters
+    ----------
+    X, Z : np.ndarray
+        Expression matrices of shape (n, d) and (m, d).
+    P : np.ndarray
+        Coupling matrix (n, m).
+    sample_pairs : int
+        Number of (i,j) pairs to sample.
+    random_state : int
+        Random seed for reproducibility.
+    Returns
+    -------
+    mean_cosine : float
+        Mean cosine similarity across sampled pairs.
+    """
+    
+    rng = np.random.default_rng(random_state)
+    X = np.asarray(X, dtype=np.float64)
+    Z = np.asarray(Z, dtype=np.float64)
+    
+    # Normalize feature vectors for cosine similarity
+    Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
+    Zn = Z / (np.linalg.norm(Z, axis=1, keepdims=True) + 1e-12)
+    
+    Pn = P / (P.sum() + 1e-12)
+    
+    px = Pn.sum(1)
+    idx_x = rng.choice(X.shape[0], size=sample_pairs, p=px)
+    idx_z = np.array([
+        rng.choice(Z.shape[0], p=Pn[i,:] / (Pn[i,:].sum() + 1e-12))
+        for i in idx_x
+    ])
+    
+    # Compute cosine similarities
+    cosines = np.einsum('ij,ij->i', Xn[idx_x], Zn[idx_z])
+    mean_cosine = float(np.mean(cosines))
+    
+    print(f"Mean cosine similarity under coupling: {mean_cosine:.4f}")
+    return mean_cosine'''
+
+import numpy as np
+from sklearn.metrics import adjusted_mutual_info_score, adjusted_rand_score, accuracy_score
+from scipy import sparse as sp
+
+def _to_dense_col_norm(P_sub):
+    """Return column-normalized dense matrix; safe for all-zero columns."""
+    if sp.issparse(P_sub):
+        P_sub = P_sub.tocsc(copy=True)
+        col_sums = np.asarray(P_sub.sum(axis=0)).ravel()
+        nz = col_sums > 0
+        P_sub.data /= np.repeat(col_sums[nz], np.diff(P_sub.indptr)[nz])
+        return P_sub.toarray(), col_sums
+    else:
+        col_sums = P_sub.sum(axis=0, keepdims=True)
+        Pn = np.divide(P_sub, np.maximum(col_sums, 1e-12), where=True)
+        return Pn, col_sums.ravel()
+
+def ami_on_projected_labels(P, labels_A, labels_B, conf_thresh=0.0):
+    """
+    Project A->B using P, restricting to the common label set, then compute AMI/ARI/Acc.
+    Returns dict with metrics and the projected labels/confidence for the evaluated B indices.
+    """
+    labels_A = np.asarray(labels_A)
+    labels_B = np.asarray(labels_B)
+    # common label universe
+    common = np.intersect1d(np.unique(labels_A), np.unique(labels_B))
+    maskA = np.isin(labels_A, common)
+    maskB = np.isin(labels_B, common)
+    if maskA.sum() == 0 or maskB.sum() == 0:
+        raise ValueError("No overlap in label sets between A and B.")
+
+    # restrict P to common labels
+    P_sub = P[maskA][:, maskB]
+    Pn, col_sums = _to_dense_col_norm(P_sub)  # shape (nA_common, nB_common)
+
+    # map common labels to row-indices in A-subset
+    common_to_rows = {lab: np.where(maskA & (labels_A == lab))[0] for lab in common}
+
+    # per B column: label probabilities and prediction
+    # Compute p(l | j) = sum_{i in A_l} Pn[i, j]
+    nB = Pn.shape[1]
+    probs = np.zeros((nB, common.size), dtype=float)
+    for ell, lab in enumerate(common):
+        probs[:, ell] = Pn[ np.ix_(np.isin(np.where(maskA)[0], common_to_rows[lab]), np.arange(nB)) ].sum(axis=0)
+
+    pred_idx = probs.argmax(axis=1)
+    pred_lab = common[pred_idx]
+    conf = probs.max(axis=1)
+
+    # filter by confidence threshold (optional)
+    keep = conf >= conf_thresh
+    true_lab = labels_B[maskB][keep]
+    pred_lab = pred_lab[keep]
+
+    # metrics
+    ami = adjusted_mutual_info_score(true_lab, pred_lab)
+    ari = adjusted_rand_score(true_lab, pred_lab)
+    acc = accuracy_score(true_lab, pred_lab)
+
+    return {
+        "AMI": ami,
+        "ARI": ari,
+        "ACC": acc,
+        "keep_mask_B_common": keep,
+        "B_true_eval": true_lab,
+        "B_pred_eval": pred_lab,
+        "B_conf_eval": conf[keep],
+        "common_labels": common
+    }
+
+def expression_cosine_similarity(X, Z, P, eps=1e-12):
+    from numpy.linalg import norm
+    Xn = X / (norm(X, axis=1, keepdims=True) + eps)
+    Zn = Z / (norm(Z, axis=1, keepdims=True) + eps)
+    C = Xn @ Zn.T  # cosine matrix
+    return (P * C).sum() / (P.sum() + eps)
 
 def Alignment_Clus_Metrics(X, Z, P, k=4, random_state=0):
     
