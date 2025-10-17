@@ -54,6 +54,14 @@ import numpy as np
 from sklearn.metrics import adjusted_mutual_info_score, adjusted_rand_score, accuracy_score
 from scipy import sparse as sp
 
+def evaluate_coupling(xs, xs2, P, A_labels, B_labels, metrics):
+    """Return dict with migration and symmetric mean projected AMI for one coupling."""
+    mig = float(migration_metrics(xs, xs2, P)['expected_disp'])
+    ab = ami_on_projected_labels(P,   A_labels, B_labels)
+    ba = ami_on_projected_labels(P.T, B_labels, A_labels)
+    ami_mean = 0.5 * (ab["AMI"] + ba["AMI"])
+    return {"migration": mig, "projAMI_mean": float(ami_mean)}
+
 def _to_dense_col_norm(P_sub):
     """Return column-normalized dense matrix; safe for all-zero columns."""
     if sp.issparse(P_sub):

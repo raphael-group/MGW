@@ -147,6 +147,13 @@ def normalize_range_np(ys):
 ----
 '''
 
+def downsample_per_slice(adata, max_obs=10_000, random_state=42):
+    """Return a copy of `adata` with ≤max_obs observations."""
+    if adata.n_obs <= max_obs:
+        return adata.copy()
+    rng = np.random.default_rng(random_state)
+    idx = rng.choice(adata.n_obs, size=max_obs, replace=False)
+    return adata[idx].copy()
 
 def cca_from_unpaired(sp_xy_A, sp_xy_B, feats_A, feats_B, n_components=2, K=8):
     """Return (A_cca, B_cca, cca, sc_A, sc_B) given coords + neural feats.
