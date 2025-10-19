@@ -1,5 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import scipy.sparse as sp
+import matplotlib.pyplot as plt
+import pandas as pd
+from mgw import metrics
+
 
 def scatter_colored(coords, values, s=10):
     plt.figure()
@@ -229,3 +235,245 @@ def procrustes_from_coupling(X, Y, P, ensure_rotation=True):
 
     # X was centered then re-shifted, so return the original X for plotting
     return X, Y_aligned, R, t
+
+def project_labels_via_P(P, labels_src, direction="A_to_B"):
+    """
+    Project discrete labels via GW coupling.
+    direction="A_to_B": P shape (n_A, n_B), project A->B
+    direction="B_to_A": P shape (n_A, n_B), project B->A
+    Returns: pred_labels, confidence, posteriors (C x n_dest)
+    """
+    P = P.toarray() if sp.issparse(P) else np.asarray(P, float)
+    labels_src = np.asarray(labels_src)
+
+    classes, inv = np.unique(labels_src, return_inverse=True)     # C classes
+    onehot = np.eye(len(classes))[inv]                            # (n_src, C)
+
+    if direction == "A_to_B":
+        # column-normalize (each B point gets a distribution over A)
+        W = P / (P.sum(axis=0, keepdims=True) + 1e-12)           # (n_A, n_B)
+        post = onehot.T @ W                                       # (C, n_B)
+    else:
+        # row-normalize (each A point gets a distribution over B)
+        W = P / (P.sum(axis=1, keepdims=True) + 1e-12)           # (n_A, n_B)
+        post = onehot.T @ W                                       # (C, n_B) but this
+        # is actually labels on B; to get A<-B, swap roles:
+        # Make onehot for B labels then multiply W^T. Provided here for symmetry:
+        raise ValueError("For B_to_A, pass B labels as labels_src and use direction='A_to_B' with P.T")
+
+    pred_idx = post.argmax(axis=0)
+    conf = post.max(axis=0)
+    return classes[pred_idx], conf, post
+
+def plot_projected_labels(A_xy, B_xy, A_labels, B_labels_pred, B_conf=None, conf_thresh=None, 
+                          title_A = "A: annotated", title_B = "B: projected labels"):
+    """Side-by-side scatter: A true labels vs B projected labels."""
+    # color by categorical code
+    cats = pd.Categorical(A_labels)
+    colA = cats.codes
+    # ensure same palette order on B
+    catsB = pd.Categorical(B_labels_pred, categories=cats.categories)
+    colB = catsB.codes
+
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
+    ax[0].scatter(A_xy[:,0], A_xy[:,1], c=colA, s=6, cmap='tab20')
+    ax[0].set_title(title_A); ax[0].axis('off'); ax[0].set_aspect('equal')
+
+    alphaB = 1.0
+    if B_conf is not None and conf_thresh is not None:
+        alphaB = np.clip((B_conf - conf_thresh) / max(1e-8, 1 - conf_thresh), 0.15, 1.0)
+
+    sc1 = ax[1].scatter(B_xy[:,0], B_xy[:,1], c=colB, s=6, cmap='tab20',
+                        alpha=alphaB if np.isscalar(alphaB) else None)
+    # if we used per-point alpha:
+    if not np.isscalar(alphaB):
+        for coll, a in zip(sc1.get_offsets(), alphaB): pass  # (mpl doesn't expose per-point alpha directly)
+        # simple fallback: hide low-confidence as gray
+        low = (B_conf < conf_thresh)
+        ax[1].scatter(B_xy[low,0], B_xy[low,1], c='lightgray', s=6)
+
+    ax[1].set_title(title_B); ax[1].axis('off'); ax[1].set_aspect('equal')
+    plt.show()
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import dijkstra
+
+# --------------- #
+# 1) Build weights
+# --------------- #
+def build_weighted_graph(coords, G, knn_csr):
+    """
+    coords: (n,2) float64/32
+    G:      (n,2,2) pull-back metric (torch or np); we'll use numpy
+    knn_csr: csr_matrix with 0/1 structure of kNN graph (undirected)
+    returns: W (csr) with Riemannian arc-length weights on edges
+    """
+    if hasattr(G, "detach"):  # torch -> numpy
+        G = G.detach().cpu().numpy()
+    G = np.asarray(G)
+
+    rows, cols = knn_csr.nonzero()
+    # mid-point / symmetric metric on edge (i,j)
+    M = 0.5*(G[rows] + G[cols])          # (nnz,2,2)
+    v = coords[cols] - coords[rows]      # (nnz,2)
+    # weight = sqrt( v^T M v )
+    tmp = np.einsum('...i,...ij,...j->...', v, M, v)  # (nnz,)
+    w = np.sqrt(np.maximum(tmp, 0.0))
+
+    # Assemble weighted graph
+    n = knn_csr.shape[0]
+    W = csr_matrix((w, (rows, cols)), shape=(n, n))
+    # Make sure it's symmetric (kNN is typically symmetrized, but be safe)
+    W = 0.5*(W + W.T)
+    return W
+
+# -------------------------------- #
+# 2) Single-source geodesic solver
+# -------------------------------- #
+def geodesics_from_source(W, src):
+    """
+    W:   weighted csr_matrix
+    src: int (source index)
+    returns: dist (n,), pred (n,) predecessor array
+    """
+    dist, pred = dijkstra(W, directed=False, indices=src, return_predecessors=True)
+    return dist, pred
+
+# ------------------------- #
+# 3) Path reconstruct + plot
+# ------------------------- #
+def traceback_path(pred, i, j):
+    """
+    pred: predecessors array from dijkstra (shape (n,))
+    returns: list of indices for the geodesic i -> j
+    """
+    path = [j]
+    k = j
+    while k != i and k != -9999:
+        k = pred[k]
+        path.append(k)
+    if path[-1] != i:
+        # no path (shouldn't happen on a connected kNN graph)
+        return path[::-1], False
+    return path[::-1], True
+
+def plot_geodesic(coords, path_idx, scatter=True, title=None, lw=2.5, alpha=0.9):
+    """
+    coords:   (n,2)
+    path_idx: list of vertex indices
+    """
+    if scatter:
+        plt.scatter(coords[:,0], coords[:,1], s=6, c='k', alpha=0.2)
+    P = coords[path_idx]
+    plt.plot(P[:,0], P[:,1], '-', lw=lw, alpha=alpha)
+    plt.plot(P[0,0], P[0,1], marker='*', ms=12)         # start
+    plt.plot(P[-1,0], P[-1,1], marker='*', ms=12)       # end
+    plt.axis('equal'); plt.axis('off')
+    if title: plt.title(title)
+    plt.show()
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def summarize_alignment(couplings, names, xs, xs2, A_labels, B_labels, A=None, B=None, plot_clus=True):
+    """
+    Plot migration (x-axis, lower better) vs mean projected AMI (y-axis, higher better)
+    for each coupling in `couplings`.
+    """
+    mig_vals, ami_vals = [], []
+
+    for i, P in enumerate(couplings):
+        # Migration (expected displacement)
+        mig = metrics.migration_metrics(xs, xs2, P)['expected_disp']
+        mig_vals.append(float(mig))
+        
+        # Symmetric mean AMI
+        ab = metrics.ami_on_projected_labels(P,   A_labels, B_labels)
+        ba = metrics.ami_on_projected_labels(P.T, B_labels, A_labels)
+        ami_vals.append(0.5 * (ab["AMI"] + ba["AMI"]))
+        
+        if A is not None and B is not None and plot_clus:
+            B_pred, B_conf, _ = plotting.project_labels_via_P(P, A_labels, direction="A_to_B")
+            plotting.plot_projected_labels(A.obsm['spatial'], B.obsm['spatial'],
+                                  A_labels, B_pred, conf_thresh=0.5, title_A= ("Annotated "+names[i]))
+            A_pred, A_conf, _ = plotting.project_labels_via_P(P.T, B_labels, direction="A_to_B")
+            plotting.plot_projected_labels(B.obsm['spatial'], A.obsm['spatial'],
+                                  B_labels, A_pred, conf_thresh=0.5, title_B = ("Projected "+names[i]))
+    
+    # Scatter
+    fig, ax = plt.subplots(figsize=(6,5))
+    sc = ax.scatter(mig_vals, ami_vals, s=80, color='royalblue')
+
+    # Label each point
+    for i, name in enumerate(names):
+        ax.text(mig_vals[i] * 1.01, ami_vals[i], name, fontsize=9, va='center')
+
+    ax.set_xlabel("Expected migration distance (↓ better)")
+    ax.set_ylabel("Mean projected AMI (↑ better)")
+    ax.set_title("Alignment quality vs migration trade-off")
+
+    # aesthetic touches
+    ax.grid(alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+    return {"names": names, "migration": mig_vals, "projAMI_mean": ami_vals}
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def _labels_or_cluster(adata, key="annotation", n_pcs=30, res=1.0):
+    """Return categorical labels from adata.obs[key] if present; otherwise Leiden clusters."""
+    import scanpy as sc
+    if key in adata.obs and adata.obs[key].notna().any():
+        return adata.obs[key].astype(str).to_numpy()
+    # quick unsupervised labels as fallback
+    ad = adata.copy()
+    if "X_pca" not in ad.obsm:
+        sc.pp.normalize_total(ad); sc.pp.log1p(ad); sc.pp.pca(ad, n_comps=n_pcs)
+    sc.pp.neighbors(ad); sc.tl.leiden(ad, resolution=res)
+    return ad.obs["leiden"].astype(str).to_numpy()
+
+def plot_alignment_summary_all(pairs_results):
+    """
+    pairs_results: list of dicts, each like:
+      {
+        "pair": "E11.5→E12.5",
+        "methods": ["MGW","Spatial-GW","Feature-GW"],
+        "metrics": [{"migration":...,"projAMI_mean":...}, ...]  # same order as methods
+      }
+    """
+    all_methods = []
+    for r in pairs_results:
+        for m in r["methods"]:
+            if m not in all_methods:
+                all_methods.append(m)
+    colors = plt.cm.tab10(np.linspace(0,1,len(all_methods)))
+    method_style = {m: dict(color=colors[i], marker="o") for i,m in enumerate(all_methods)}
+
+    fig, ax = plt.subplots(figsize=(7,5))
+    for r in pairs_results:
+        pair = r["pair"]
+        for m, metr in zip(r["methods"], r["metrics"]):
+            style = method_style[m]
+            x, y = metr["migration"], metr["projAMI_mean"]
+            ax.scatter(x, y, s=70, **style)
+            ax.text(x*1.01, y, pair, fontsize=8, va="center")  # tiny offset label
+            
+    handles = [plt.Line2D([0],[0], linestyle="none", marker=style["marker"],
+                          color=style["color"], label=m) 
+               for m, style in method_style.items()]
+    ax.legend(handles=handles, title="Method", loc="best", frameon=True)
+
+    ax.set_xlabel("Expected migration distance (↓ better)")
+    ax.set_ylabel("Mean projected AMI (A↔B) (↑ better)")
+    ax.set_title("Alignment summary across all timepoint pairs")
+    ax.grid(alpha=0.3)
+    plt.tight_layout(); plt.show()
+
+
+
+

@@ -4,31 +4,37 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import shortest_path
 from sklearn.neighbors import NearestNeighbors
 from scipy.sparse.csgraph import dijkstra  # fastest in SciPy for sparse graphs
+from torch.func import jacrev, vmap
 
-def _jacobian_pointwise(phi, x_point):
-    x_point = x_point.detach().requires_grad_(True)
-    y = phi(x_point[None, :]).squeeze(0)  # (dim_f,)
-    # Compute Jacobian dy/dx: dim_f x dim_e
-    J = []
-    for i in range(y.shape[0]):
-        grad = torch.autograd.grad(y[i], x_point, retain_graph=True, create_graph=False)[0]
-        J.append(grad)
-    J = torch.stack(J, dim=0)  # (dim_f, dim_e)
-    return J
 
-def pullback_metric_field(phi, X, eps=1e-9):
+from torch.func import jacrev, vmap
+
+def pullback_metric_field(phi, X, eps=0.02):
     """
-    For each x in X (N x dim_e), compute g(x) = J_phi(x)^T J_phi(x) + eps I
-    Returns a tensor G of shape (N, dim_e, dim_e)
+    Homogeneous (global) scale so ||g|| is comparable to I:
+      g_scaled(x) = (J^T J) / alpha + eps * I
+    with alpha = median( trace(J^T J)/d ), d=2 here.
     """
-    device = X.device
-    N, dim_e = X.shape
-    G = torch.zeros((N, dim_e, dim_e), dtype=X.dtype, device=device)
-    I = torch.eye(dim_e, dtype=X.dtype, device=device)
-    for i in range(N):
-        J = _jacobian_pointwise(phi, X[i])
-        G[i] = J.T @ J + eps * I
-    return G
+    phi.eval()
+    device, dtype = X.device, X.dtype
+    d = X.shape[1]  # 2
+    def phi_single(x):  # R^2 -> R^f
+        return phi(x.unsqueeze(0)).squeeze(0)
+    # Jacobians at all points (batch vmap+jacrev)
+    J = vmap(jacrev(phi_single))(X)                # (N, f, d)
+    G = torch.einsum('nfd,nfe->nde', J, J)         # (N, d, d)
+    # Typical local scale of g: mean eigenvalue proxy
+    tr_over_d = (G[...,0,0] + G[...,1,1]) / d      # (N,)
+    alpha = torch.median(tr_over_d).clamp_min(1e-12)
+    print(f'Rescaling Jacobians by {alpha}.')
+    # Homogeneous rescale
+    Gs = G / alpha
+    # Data-driven eps: relative to 1 (since mean eig ~ 1 after scaling)
+    eps = float(eps)
+    I = torch.eye(d, dtype=dtype, device=device)
+    Gs = Gs + eps * I
+    
+    return Gs
 
 def knn_graph(coords: np.ndarray, k:int=10):
     nn = NearestNeighbors(n_neighbors=min(k+1, len(coords)), algorithm="kd_tree")
@@ -122,3 +128,32 @@ def geodesic_distances_fast(coords: np.ndarray,
 def pairwise_squared_geodesic(dist_matrix: np.ndarray):
     return dist_matrix ** 2
 
+
+'''
+def _jacobian_pointwise(phi, x_point):
+    x_point = x_point.detach().requires_grad_(True)
+    y = phi(x_point[None, :]).squeeze(0)  # (dim_f,)
+    # Compute Jacobian dy/dx: dim_f x dim_e
+    J = []
+    for i in range(y.shape[0]):
+        grad = torch.autograd.grad(y[i], x_point, retain_graph=True, create_graph=False)[0]
+        J.append(grad)
+    J = torch.stack(J, dim=0)  # (dim_f, dim_e)
+    return J
+
+def pullback_metric_field(phi, X, eps=1e-9):
+    """
+    For each x in X (N x dim_e), compute g(x) = J_phi(x)^T J_phi(x) + eps I
+    Returns a tensor G of shape (N, dim_e, dim_e)
+    """
+    device = X.device
+    N, dim_e = X.shape
+    G = torch.zeros((N, dim_e, dim_e), dtype=X.dtype, device=device)
+    I = torch.eye(dim_e, dtype=X.dtype, device=device)
+    for i in range(N):
+        J = _jacobian_pointwise(phi, X[i])
+        G[i] = J.T @ J + eps * I
+        with torch.no_grad():
+            print(f'Compare norm 1 {torch.norm(J.T @ J)}, 2 {torch.norm(I)}')
+    return G
+'''
