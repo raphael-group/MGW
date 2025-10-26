@@ -2,7 +2,7 @@ import numpy as np
 from ott.problems.quadratic import quadratic_problem
 from ott.solvers.linear.sinkhorn import Sinkhorn
 from ott.solvers.quadratic.gromov_wasserstein import GromovWasserstein
-from ot.gromov import gwloss, init_matrix  # POT, for diagnostics only
+#from ot.gromov import gwloss, init_matrix  # POT, for diagnostics only
 import jax
 import jax.numpy as jnp
 from ott.geometry import geometry
@@ -82,6 +82,7 @@ def solve_gw(C1, C2, a=None, b=None,
                   f"ε={epsilon}, iters={out.n_iters}")
         return P
 
+    '''
     # ---- fallback: POT ----
     import ot
     if epsilon > 0:
@@ -91,7 +92,9 @@ def solve_gw(C1, C2, a=None, b=None,
     else:
         P = ot.gromov.gromov_wasserstein(
             C1, C2, a, b, loss_fun='square_loss',
-            verbose=verbose, max_iter=numItermax)
+            verbose=verbose, max_iter=numItermax
+            )
+    '''
     return P
 
 def solve_gw_ott(C1, C2, a=None, b=None,
@@ -128,11 +131,12 @@ def solve_gw_ott(C1, C2, a=None, b=None,
     out = gw(prob)
     P = np.array(out.matrix)
     
+    '''
     # Diagnostics (POT’s explicit GW loss; optional)
     constC, hC1, hC2 = init_matrix(C1, C2, a, b, loss_fun="square_loss")
     loss_val = gwloss(constC, hC1, hC2, P)
-    
     if verbose:
         print(f"[OTT] GW  ε={epsilon:.2e}  iters={getattr(out,'n_iters',-1)}  loss≈{loss_val:.4e}")
+    '''
     return P
 

@@ -4,6 +4,8 @@ from typing import Optional, Dict, Any
 from scipy.spatial.distance import cdist
 from mgw import util, models, geometry, plotting
 from mgw.gw import solve_gw_ott
+from mgw.plotting import fit_metrics
+from sklearn.preprocessing import normalize
 
 # ----------------------------
 # Small helpers
@@ -32,8 +34,11 @@ def mgw_align(
     CCA_comp: int = 3,
     use_cca_feeler: bool = True,
     feeler_downsample: Optional[int] = 8000,   # downsample size per slice for the CCA "feeler"
-    log1p_features: bool = True,
-
+    log1p_X: bool = True,
+    log1p_Z: bool = True,
+    use_pca_X: bool = True,
+    use_pca_Z: bool = True,
+    
     # neural fields
     widths: tuple = (128, 256, 256, 128),
     lr: float = 1e-3,
@@ -59,6 +64,11 @@ def mgw_align(
     max_obs_A: Optional[int] = None,       # subsample A to at most this many spots (None=keep all)
     max_obs_B: Optional[int] = None,       # subsample B to at most this many spots
     verbose: bool = True,
+    plot_net: bool = False,
+    
+    # feeler alignment for CCA
+    spatial_only=True,
+    feature_only=False
 ):
     """
     Run Manifold-GW alignment end-to-end and return a dict with the coupling and intermediates.
@@ -107,29 +117,41 @@ def mgw_align(
     # 2) Feature preprocessing: PCA then (optional) CCA feeler
     # ----------------------------
     # Reuse existing PCA if present, else compute
-    def _get_pca(adata, n_comps):
+    def _get_pca(adata, n_comps, log1p):
         if "X_pca" in adata.obsm and adata.obsm["X_pca"].shape[1] >= n_comps:
             return np.asarray(adata.obsm["X_pca"][:, :n_comps], dtype=np.float64)
         # compute PCA fresh
-        return util.pca_from(adata, n_comps=n_comps, log1p=log1p_features)
-
-    X_pca = _get_pca(A_, PCA_comp)
-    Z_pca = _get_pca(B_, PCA_comp)
-
+        return util.pca_from(adata, n_comps=n_comps, log1p=log1p)
+    
+    if use_pca_X:
+        X_pca = _get_pca(A_, n_comps=PCA_comp, log1p=log1p_X)
+    else:
+        X_pca = A_.X.toarray() if sp.issparse(A_.X) else np.asarray(A_.X)
+    
+    if use_pca_Z:
+        Z_pca = _get_pca(B_, n_comps=PCA_comp, log1p=log1p_Z)
+    else:
+        Z_pca = B_.X.toarray() if sp.issparse(B_.X) else np.asarray(B_.X)
+        if log1p_Z:
+            Z_pca = np.log1p(Z_pca)
+        if verbose:
+            print(f"[mgw] using raw features (no PCA): X={X_pca.shape}, Z={Z_pca.shape}")
+    
     if use_cca_feeler:
         if verbose:
             print("[mgw] running CCA feeler (PCA → GW on fused costs → barycenter → CCA)")
-
         feeler = util.project_informative_features(
             path_X=None, path_Z=None,
             adata_X=A_, adata_Z=B_,
             PCA_comp=PCA_comp, CCA_comp=CCA_comp,
             n_downsample=feeler_downsample,
-            log1p_features=log1p_features,
+            log1p_X=log1p_X,
+            log1p_Z=log1p_Z,
             verbose=verbose
         )
         X_rep = feeler["X_cca_full"]
         Z_rep = feeler["Z_cca_full"]
+    
     else:
         if verbose:
             print("[mgw] skipping CCA; using PCA features directly")
@@ -137,8 +159,9 @@ def mgw_align(
     
     xs_t  = torch.from_numpy(xs).to(device)
     xs2_t = torch.from_numpy(xs2).to(device)
-    ys_t  = util.normalize_range(torch.from_numpy(X_rep).to(device))
-    ys2_t = util.normalize_range(torch.from_numpy(Z_rep).to(device))
+    
+    ys_t  = torch.from_numpy(normalize(X_rep)).to(device) #util.normalize_range(torch.from_numpy(X_rep).to(device))
+    ys2_t = torch.from_numpy(normalize(Z_rep)).to(device) #util.normalize_range(torch.from_numpy(Z_rep).to(device))
 
     dim_e, dim_f_M, dim_f_N = 2, ys_t.shape[1], ys2_t.shape[1]
     if verbose:
@@ -169,7 +192,20 @@ def mgw_align(
         if save_dir:
             torch.save(phi.state_dict(), phi_path)
             torch.save(psi.state_dict(), psi_path)
-
+    
+    if plot_net:
+        rng = np.random.default_rng(0)
+        for k in rng.choice(dim_f_M, size=min(5, dim_f_M), replace=False):
+            X_pred = plotting.predict_on_model(phi, xs)
+            plotting.plot_fit_on_cloud(xs, ys_t[:,k].cpu().numpy(), X_pred[:,k],
+                                       title_true=f'ST feat{k} (true)', title_pred=f'φ(xs) feat{k} (pred)')
+            print('φ feat', k, fit_metrics(ys_t[:,k].cpu().numpy(), X_pred[:,k]))
+            
+            Z_pred = plotting.predict_on_model(psi, xs2)
+            plotting.plot_fit_on_cloud(xs2,ys2_t[:,k].cpu().numpy(), Z_pred[:,k],
+                                       title_true=f'SM feat{k} (true)', title_pred=f'ψ(xs2) feat{k} (pred)')
+            print('ψ feat', k, fit_metrics(ys2_t[:,k].cpu().numpy(), Z_pred[:,k]))
+    
     # ----------------------------
     # 4) Pullback metric fields & geodesics
     # ----------------------------

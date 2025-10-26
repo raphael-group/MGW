@@ -190,7 +190,7 @@ def fit_metrics(y_true, y_pred):
     corr = np.corrcoef(y_true, y_pred)[0,1]
     return {'mse': mse, 'r2': r2, 'corr': corr}
 
-def procrustes_from_coupling(X, Y, P, ensure_rotation=True):
+def procrustes_from_coupling(X, Y, P, ensure_rotation=False):
     """
     Align Y to X using a weighted Procrustes fit with weights from coupling P.
 
@@ -224,6 +224,7 @@ def procrustes_from_coupling(X, Y, P, ensure_rotation=True):
     # SVD -> rotation
     U, _, Vt = np.linalg.svd(H, full_matrices=False)
     R = Vt.T @ U.T
+    
     if ensure_rotation and np.linalg.det(R) < 0:
         Vt[-1, :] *= -1
         R = Vt.T @ U.T
