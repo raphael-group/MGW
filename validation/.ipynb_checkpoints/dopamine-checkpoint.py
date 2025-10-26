@@ -17,7 +17,7 @@ def rownorm(M):
 def orient_P(P, n_st, n_msi):
     return P if P.shape==(n_st,n_msi) else (P.T if P.shape==(n_msi,n_st) else (_ for _ in ()).throw(ValueError(f"Bad P shape {P.shape}")))
 
-def eval_proj(P_st_msi, mz_target, ppm=25, pos=["dopamine_Cd"]):
+def eval_proj(P_st_msi, mz_target, msi, st, ppm=25, pos=["dopamine_Cd"]):
     '''
     AUROC: how does the rank order of the target metabolite's projection under P separate dopaminergic GT label or not.
     (AUPRC: more sensitive if positives are rare)

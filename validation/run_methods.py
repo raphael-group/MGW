@@ -8,6 +8,7 @@ from mgw import util
 from sklearn.utils import check_array
 from scipy.spatial.distance import cdist
 from scipy.optimize import linear_sum_assignment
+import anndata as ad
 
 import moscot.plotting as mtp
 from moscot import datasets
@@ -160,25 +161,6 @@ def run_pot_fgw_spatial(st, msi):
         print(f"[skip] POT-FGW: {e}")
         return None
 
-def run_MGW(pre):
-    try:
-        out = mgw.mgw_align_core(
-            pre,
-            widths=(128,256,256,128),
-            lr=1e-3,
-            niter=20_000,
-            knn_k=12,
-            geodesic_eps=1e-2,
-            save_dir="/scratch/gpfs/ph3641/mgw/mgw_temp2",
-            tag="run1",
-            verbose=True,
-        )
-        P = out["P"]
-        return sp.csr_matrix(P)
-    
-    except Exception as e:
-        print(f"[skip] M-GW: {e}")
-        return None
 
 
 

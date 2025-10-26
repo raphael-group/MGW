@@ -334,4 +334,5 @@ def get_or_compute_pca(adata, layer=None, n_comps=30, log1p=True, key="X_pca"):
         print(f"Computing PCA ({n_comps} comps)...")
         X_pca = pca_from(adata, layer=layer, n_comps=n_comps, log1p=log1p)
         adata.obsm[key] = X_pca  # optionally cache it
+    #X_pca = normalize(X_pca)
     return X_pca
