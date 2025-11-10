@@ -221,13 +221,13 @@ def procrustes_from_coupling(X, Y, P, ensure_rotation=False):
     # cross-covariance H = Yc^T P^T Xc  (d x m) @ (m x n) @ (n x d) -> (d x d)
     H = Yc.T @ P.T @ Xc
 
-    # SVD -> rotation
+    # SVD -> rotation (map Y -> X)
     U, _, Vt = np.linalg.svd(H, full_matrices=False)
-    R = Vt.T @ U.T
+    R = U @ Vt                               # <-- key change
     
     if ensure_rotation and np.linalg.det(R) < 0:
-        Vt[-1, :] *= -1
-        R = Vt.T @ U.T
+        Vt[-1, :] *= -1                      # standard Kabsch reflection guard
+        R = U @ Vt
 
     # apply: align Y onto X’s frame
     Y_aligned = Yc @ R + x_bar
