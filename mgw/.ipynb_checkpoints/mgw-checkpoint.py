@@ -43,12 +43,14 @@ def mgw_preprocess(
         X_pca = _get_pca(A_, n_comps=PCA_comp, log1p=log1p_X)
     else:
         X_pca = A_.X.toarray() if sp.issparse(A_.X) else np.asarray(A_.X)
+        X_pca = X_pca.astype(np.float64)
         if log1p_X: X_pca = np.log1p(X_pca)
 
     if use_pca_Z:
         Z_pca = _get_pca(B_, n_comps=PCA_comp, log1p=log1p_Z)
     else:
         Z_pca = B_.X.toarray() if sp.issparse(B_.X) else np.asarray(B_.X)
+        Z_pca = Z_pca.astype(np.float64)
         if log1p_Z: Z_pca = np.log1p(Z_pca)
 
     if verbose:

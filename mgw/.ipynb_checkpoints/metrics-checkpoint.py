@@ -4,55 +4,87 @@ from sklearn.metrics.cluster import adjusted_rand_score
 import numpy as np
 from mgw import plotting
 from sklearn.metrics.pairwise import cosine_similarity
-
-
-'''
-def expression_cosine_similarity(X, Z, P=None, sample_pairs=50000, random_state=0):
-    """
-    Compute cosine similarity between expression profiles of aligned spots.
-    Parameters
-    ----------
-    X, Z : np.ndarray
-        Expression matrices of shape (n, d) and (m, d).
-    P : np.ndarray
-        Coupling matrix (n, m).
-    sample_pairs : int
-        Number of (i,j) pairs to sample.
-    random_state : int
-        Random seed for reproducibility.
-    Returns
-    -------
-    mean_cosine : float
-        Mean cosine similarity across sampled pairs.
-    """
-    
-    rng = np.random.default_rng(random_state)
-    X = np.asarray(X, dtype=np.float64)
-    Z = np.asarray(Z, dtype=np.float64)
-    
-    # Normalize feature vectors for cosine similarity
-    Xn = X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-12)
-    Zn = Z / (np.linalg.norm(Z, axis=1, keepdims=True) + 1e-12)
-    
-    Pn = P / (P.sum() + 1e-12)
-    
-    px = Pn.sum(1)
-    idx_x = rng.choice(X.shape[0], size=sample_pairs, p=px)
-    idx_z = np.array([
-        rng.choice(Z.shape[0], p=Pn[i,:] / (Pn[i,:].sum() + 1e-12))
-        for i in idx_x
-    ])
-    
-    # Compute cosine similarities
-    cosines = np.einsum('ij,ij->i', Xn[idx_x], Zn[idx_z])
-    mean_cosine = float(np.mean(cosines))
-    
-    print(f"Mean cosine similarity under coupling: {mean_cosine:.4f}")
-    return mean_cosine'''
-
 import numpy as np
 from sklearn.metrics import adjusted_mutual_info_score, adjusted_rand_score, accuracy_score
 from scipy import sparse as sp
+import scanpy as sc
+
+def _to_numpy(X):
+    return X.toarray() if sp.issparse(X) else np.asarray(X)
+
+def per_gene_cosine_under_coupling(
+    adata_source,   # e.g., Xenium (cells)
+    adata_target,   # e.g., Visium (spots)
+    P,              # shape (n_target, n_source)
+    log1p=True,
+    scale=True,
+    eps=1e-12,
+    return_pearson=False
+):
+    """
+    Per-gene cosine similarity between adata_target.X and the barycentric
+    projection of adata_source.X via coupling P.
+
+    Returns:
+        dict with:
+          - 'genes': np.array of common gene names in order
+          - 'cosine': np.array of per-gene cosine similarities
+          - (optional) 'pearson': np.array of per-gene Pearson correlations
+          - 'summary': dict with aggregates (mean/median)
+    """
+    a_src = adata_source.copy()
+    a_tgt = adata_target.copy()
+    a_src.var_names_make_unique()
+    a_tgt.var_names_make_unique()
+
+    if log1p:
+        sc.pp.log1p(a_src); sc.pp.log1p(a_tgt)
+    if scale:
+        # scale per gene so cosine is not dominated by highly variable genes
+        sc.pp.scale(a_src, zero_center=True, max_value=None)
+        sc.pp.scale(a_tgt, zero_center=True, max_value=None)
+
+    # Intersect genes and align order
+    common = a_src.var_names.intersection(a_tgt.var_names)
+    if len(common) == 0:
+        raise ValueError("No shared genes between datasets.")
+    common = common.sort_values()
+    a_src = a_src[:, common].copy()
+    a_tgt = a_tgt[:, common].copy()
+
+    Xs = _to_numpy(a_src.X)  # (n_source, G)
+    Xt = _to_numpy(a_tgt.X)  # (n_target, G)
+
+    P = P.toarray() if sp.issparse(P) else np.asarray(P)
+    n_t, n_s = Xt.shape[0], Xs.shape[0]
+    if P.shape != (n_t, n_s):
+        raise ValueError(f"P shape {P.shape} must be (n_target={n_t}, n_source={n_s}).")
+
+    # Barycentric projection of source -> target
+    row_sums = P.sum(axis=1, keepdims=True) + eps
+    Xs_proj = (P @ Xs) / row_sums  # (n_target, G)
+
+    # Per-gene cosine: cos(a,b) = (a·b) / (||a|| ||b||)
+    num = (Xt * Xs_proj).sum(axis=0)
+    Xt_norm = np.linalg.norm(Xt, axis=0) + eps
+    Xp_norm = np.linalg.norm(Xs_proj, axis=0) + eps
+    cos = num / (Xt_norm * Xp_norm)
+
+    out = {
+        "genes": np.asarray(common.values, dtype=str),
+        "cosine": cos,
+        "summary": {"mean_cosine": float(np.mean(cos)), "median_cosine": float(np.median(cos))}
+    }
+
+    if return_pearson:
+        pear = np.array([pearsonr(Xt[:, g], Xs_proj[:, g])[0] for g in range(Xt.shape[1])])
+        out["pearson"] = pear
+        out["summary"].update(
+            mean_pearson=float(np.nanmean(pear)),
+            median_pearson=float(np.nanmedian(pear))
+        )
+    
+    return out
 
 def evaluate_coupling(xs, xs2, P, A_labels, B_labels, metrics):
     """Return dict with migration and symmetric mean projected AMI for one coupling."""
