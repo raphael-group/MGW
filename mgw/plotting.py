@@ -267,7 +267,7 @@ def project_labels_via_P(P, labels_src, direction="A_to_B"):
     return classes[pred_idx], conf, post
 
 def plot_projected_labels(A_xy, B_xy, A_labels, B_labels_pred, B_conf=None, conf_thresh=None, 
-                          title_A = "A: annotated", title_B = "B: projected labels"):
+                          title_A = "A: annotated", title_B = "B: projected labels", s=6):
     """Side-by-side scatter: A true labels vs B projected labels."""
     # color by categorical code
     cats = pd.Categorical(A_labels)
@@ -277,21 +277,21 @@ def plot_projected_labels(A_xy, B_xy, A_labels, B_labels_pred, B_conf=None, conf
     colB = catsB.codes
 
     fig, ax = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True)
-    ax[0].scatter(A_xy[:,0], A_xy[:,1], c=colA, s=6, cmap='tab20')
+    ax[0].scatter(A_xy[:,0], A_xy[:,1], c=colA, s=s, cmap='tab20')
     ax[0].set_title(title_A); ax[0].axis('off'); ax[0].set_aspect('equal')
 
     alphaB = 1.0
     if B_conf is not None and conf_thresh is not None:
         alphaB = np.clip((B_conf - conf_thresh) / max(1e-8, 1 - conf_thresh), 0.15, 1.0)
 
-    sc1 = ax[1].scatter(B_xy[:,0], B_xy[:,1], c=colB, s=6, cmap='tab20',
+    sc1 = ax[1].scatter(B_xy[:,0], B_xy[:,1], c=colB, s=s, cmap='tab20',
                         alpha=alphaB if np.isscalar(alphaB) else None)
     # if we used per-point alpha:
     if not np.isscalar(alphaB):
         for coll, a in zip(sc1.get_offsets(), alphaB): pass  # (mpl doesn't expose per-point alpha directly)
         # simple fallback: hide low-confidence as gray
         low = (B_conf < conf_thresh)
-        ax[1].scatter(B_xy[low,0], B_xy[low,1], c='lightgray', s=6)
+        ax[1].scatter(B_xy[low,0], B_xy[low,1], c='lightgray', s=s)
 
     ax[1].set_title(title_B); ax[1].axis('off'); ax[1].set_aspect('equal')
     plt.show()
@@ -361,19 +361,72 @@ def traceback_path(pred, i, j):
         return path[::-1], False
     return path[::-1], True
 
-def plot_geodesic(coords, path_idx, scatter=True, title=None, lw=2.5, alpha=0.9):
+'''
+def plot_geodesic(coords, path_idx, scatter=True, title=None, lw=2.5, alpha=0.9, s=6):
     """
     coords:   (n,2)
     path_idx: list of vertex indices
     """
     if scatter:
-        plt.scatter(coords[:,0], coords[:,1], s=6, c='k', alpha=0.2)
+        plt.scatter(coords[:,0], coords[:,1], s=s, c='k', alpha=0.2)
     P = coords[path_idx]
     plt.plot(P[:,0], P[:,1], '-', lw=lw, alpha=alpha)
     plt.plot(P[0,0], P[0,1], marker='*', ms=12)         # start
     plt.plot(P[-1,0], P[-1,1], marker='*', ms=12)       # end
     plt.axis('equal'); plt.axis('off')
     if title: plt.title(title)
+    plt.show()
+'''
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+import matplotlib.patheffects as pe
+
+def scatter_big(ax, coords, color=None, max_points=50_000, s=2, alpha=0.15):
+    """Fast, light background scatter."""
+    n = coords.shape[0]
+    if n > max_points:
+        idx = np.random.RandomState(0).choice(n, size=max_points, replace=False)
+        coords_ = coords[idx]
+        c_ = None if color is None else np.asarray(color)[idx]
+    else:
+        coords_, c_ = coords, color
+
+    sc = ax.scatter(
+        coords_[:,0], coords_[:,1],
+        c=c_, s=s, alpha=alpha,
+        rasterized=True,  # PDF/SVG friendly
+        linewidths=0,    # faster, cleaner
+        edgecolors='none',
+        marker='.',      # very small glyph
+        antialiased=False
+    )
+    return sc
+
+def draw_geodesic(ax, coords, path_idx, lw=3.0, alpha=0.95, zorder=5):
+    """Crisp path with white halo so it reads over dense clouds."""
+    P = coords[path_idx]
+    lc = LineCollection([P], linewidths=lw, alpha=alpha, zorder=zorder, color='red')
+    lc.set_path_effects([
+        pe.Stroke(linewidth=lw+2.5, foreground="white", alpha=1.0),
+        pe.Normal()
+    ])
+    ax.add_collection(lc)
+    # start/end markers
+    ax.plot(P[0,0],  P[0,1],  marker='*', ms=25, zorder=zorder+1, color='red')
+    ax.plot(P[-1,0], P[-1,1], marker='*', ms=25, zorder=zorder+1, color='red')
+    return lc
+
+def plot_geodesic(coords, path_idx, color=None, title=None,
+                         figsize=(5,5), max_points=50_000, s=10):
+    fig, ax = plt.subplots(figsize=figsize)
+    scatter_big(ax, coords, color=color, max_points=max_points, s=s, alpha=0.8)
+    draw_geodesic(ax, coords, path_idx, lw=3.0, alpha=0.95)
+    ax.set_aspect('equal', adjustable='box')
+    ax.set_axis_off()
+    if title: ax.set_title(title)
+    plt.tight_layout()
     plt.show()
 
 import numpy as np
@@ -438,7 +491,172 @@ def _labels_or_cluster(adata, key="annotation", n_pcs=30, res=1.0):
     sc.pp.neighbors(ad); sc.tl.leiden(ad, resolution=res)
     return ad.obs["leiden"].astype(str).to_numpy()
 
-def plot_alignment_summary_all(pairs_results):
+
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib import patheffects as pe
+from collections import OrderedDict
+from typing import List, Dict, Optional
+import math
+
+'''
+def plot_alignment_summary_all(pairs_results,
+    x_key="migration",
+    y_key="projAMI_mean",
+    xlabel="Expected migration distance",
+    ylabel="Mean projected AMI (A↔B)",
+    title="Alignment summary across all timepoint pairs",
+    method_order=None,
+    savepath_prefix=None,
+    width_mm=120, height_mm=90, dpi=600,
+    show=True,
+):
+    """
+    Nature-style alignment summary plot across pairs.
+    Each element in `pairs_results` should be:
+      {
+        "pair": "E11.5→E12.5",
+        "methods": ["MGW","Spatial-GW","Feature-GW"],
+        "metrics": [{"migration":..., "projAMI_mean":...}, ...]
+      }
+    """
+
+    # === Styling (Nature-style) ===
+    mpl.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "axes.linewidth": 0.8,
+        "axes.titlesize": 9.5,
+        "axes.labelsize": 9,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "legend.fontsize": 8,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "savefig.transparent": True,
+    })
+
+    # === Collect unique methods ===
+    all_methods = []
+    for r in pairs_results:
+        for m in r["methods"]:
+            if m not in all_methods:
+                all_methods.append(m)
+    if method_order:
+        all_methods = [m for m in method_order if m in all_methods] + \
+                      [m for m in all_methods if m not in method_order]
+
+    # === Palette & markers ===
+    cmap = plt.cm.get_cmap("tab10", len(all_methods))
+    marker_cycle = ["o", "s", "D", "^", "v", "P", "X", "*", "<", ">"]
+    method_style = OrderedDict()
+    for i, m in enumerate(all_methods):
+        method_style[m] = dict(
+            color=cmap(i),
+            marker=marker_cycle[i % len(marker_cycle)],
+            s=40,
+            edgecolor="black",
+            linewidths=0.5,
+        )
+
+    inch = 1 / 25.4
+    fig, ax = plt.subplots(figsize=(width_mm*inch, height_mm*inch))
+    ax.grid(True, which="major", linestyle="-", alpha=0.15, linewidth=0.6)
+    ax.minorticks_on()
+
+    # Offsets to avoid text overlap
+    pair_angles = {}
+    for r in pairs_results:
+        pair = r["pair"]
+        n = len(r["methods"])
+        pair_angles[pair] = np.linspace(-np.pi/6, np.pi/6, n)
+
+    legend_handles = OrderedDict()
+
+    for r in pairs_results:
+        pair = r["pair"]
+        for idx, (m, metr) in enumerate(zip(r["methods"], r["metrics"])):
+            style = method_style[m]
+            x = float(metr[x_key])
+            y = float(metr[y_key])
+            sc = ax.scatter(x, y, label=m, **style, zorder=3)
+            legend_handles[m] = sc  # used later for legend
+
+            # Text offset per pair
+            theta = pair_angles[pair][idx]
+            dx = 0.012 * np.cos(theta)
+            dy = 0.012 * np.sin(theta)
+            txt = ax.text(
+                x + dx, y + dy, pair,
+                fontsize=7.5, va="center", ha="left",
+                zorder=4
+            )
+            txt.set_path_effects([
+                pe.Stroke(linewidth=2.0, foreground="white"),
+                pe.Normal()
+            ])
+
+    # === Axis labels & title ===
+    ax.set_xlabel(f"{xlabel} (lower is better)")
+    ax.set_ylabel(f"{ylabel} (higher is better)")
+    ax.set_title(title, pad=6)
+
+    # === Tight bounds with small padding ===
+    xs = [float(metr[x_key]) for r in pairs_results for metr in r["metrics"]]
+    ys = [float(metr[y_key]) for r in pairs_results for metr in r["metrics"]]
+    pad = 0.06
+    xlim = (min(xs)-pad*(max(xs)-min(xs)), max(xs)+pad*(max(xs)-min(xs)))
+    ylim = (min(ys)-pad*(max(ys)-min(ys)), max(ys)+pad*(max(ys)-min(ys)))
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+
+    # === Legend with proper labels ===
+    handles = []
+    labels = []
+    for m in all_methods:
+        if m not in legend_handles:
+            continue
+        sc = legend_handles[m]
+        style = method_style[m]
+        handles.append(
+            plt.Line2D(
+                [], [], linestyle="none",
+                marker=style["marker"],
+                markerfacecolor=style["color"],
+                markeredgecolor=style.get("edgecolor","black"),
+                markersize=math.sqrt(style["s"]),
+            )
+        )
+        labels.append(m)
+
+    leg = ax.legend(
+        handles, labels, title="Method",
+        frameon=True, loc="center left",
+        bbox_to_anchor=(1.02, 0.5), borderaxespad=0.5, handletextpad=0.6
+    )
+    leg.get_frame().set_linewidth(0.6)
+    leg.get_frame().set_alpha(0.9)
+
+    plt.tight_layout(pad=0.6)
+
+    # === Save outputs ===
+    if savepath_prefix:
+        fig.savefig(f"{savepath_prefix}.pdf")
+        fig.savefig(f"{savepath_prefix}.svg")
+        fig.savefig(f"{savepath_prefix}.png", dpi=dpi)
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)'''
+
+
+def plot_alignment_summary_all(pairs_results,
+    savepath_prefix=None, dpi=600):
     """
     pairs_results: list of dicts, each like:
       {
@@ -473,8 +691,13 @@ def plot_alignment_summary_all(pairs_results):
     ax.set_ylabel("Mean projected AMI (A↔B) (↑ better)")
     ax.set_title("Alignment summary across all timepoint pairs")
     ax.grid(alpha=0.3)
+    
+    if savepath_prefix:
+        fig.savefig(f"{savepath_prefix}.pdf")
+        fig.savefig(f"{savepath_prefix}.svg")
+        fig.savefig(f"{savepath_prefix}.png", dpi=dpi)
+        
     plt.tight_layout(); plt.show()
-
 
 
 
