@@ -9,12 +9,11 @@ from scipy.spatial.distance import cosine
 from scipy.stats import pearsonr
 import pandas as pd
 import sys
-sys.path.append("/home/yx6674/SpatialMETA")
+sys.path.append("../SpatialMETA")
 import spatialmeta as smt
 import matplotlib.pyplot as plt
 from pathlib import Path
-sys.path.append("/home/yx6674/SpatialMETA/benchmark")
-from multi_benmark_function import run_modality_benchmark
+from benchmark.multi_benmark_function import run_modality_benchmark
 from .util import _barycentric_right
 
 def _to_numpy(X):
