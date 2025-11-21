@@ -1,6 +1,6 @@
 # Manifold Gromov-Wasserstein (MGW): Riemannian Metric Learning for Alignment of Spatial Multiomics
 
-This the repository for **["Alignment of multimodal manifolds using Riemannian pull-back metrics and Gromov-Wasserstein optimal transport."]()** a technique which performs Riemannian metric learning across spatial modalities (multimoics, transcriptomics, and so on) using the Riemannian pull-back metric, infers Riemannian (geodesic) distances, and aligns Riemannian distances with Gromov-Wasserstein Optimal Transport.
+This the repository for **["Riemannian Metric Learning for Alignment of Spatial Multiomics."]()** a technique which performs Riemannian metric learning across spatial modalities (multimoics, transcriptomics, and so on) using the Riemannian pull-back metric, infers Riemannian (geodesic) distances, and aligns Riemannian distances with Gromov-Wasserstein Optimal Transport.
 
 In the section below, we detail the usage of MGW which complements the simple example notebook:
 ```markdown
