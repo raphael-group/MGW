@@ -105,7 +105,7 @@ We have a number of variables which can be accessed from `out`.
 - `xs2`: Spatial coordinates 2 (normalized)
 - `phi`: Neural field mapping into modality 1
 - `psi`: Neural field mapping into modality 2
-- `G_M`/`G_N`: Pull-back metric tensor field over coordinates
+- `G_M`/`G_N`: Pull-back metric tensor field evaluated at the coordinates
 - `C_M`/`C_N`: MGW Riemannian distance matrices
 
 As an example, let us return the alignment and barycentrically project across modalities.
