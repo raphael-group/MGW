@@ -93,6 +93,7 @@ out = mgw.mgw_align_core(
 Here, the key parameters are
 - `PHI_ARC`: Layers of the MLP
 - `KNN_K`: Resolution of the K nearest neighbor graph used for Riemannian geodesics
+- `DEFAULT_EPS`: Epsilon for stability of Jacobian. Generally not an issue, and smaller yields more faithful Riemannian geodesics (e.g. 1e-5 for mouse embryo).
 - `DEFAULT_GW_PARAMS`: Default parameters for the optimal transport solver of **ott jax**
 - `DEFAULT_LR`: Learning-rate for the network.
 - `DEFAULT_ITER`: Number of training iterations for the network.
