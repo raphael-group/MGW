@@ -44,7 +44,7 @@ Call `mgw.mgw_preprocess` on two AnnDatas.
 
 You can run PCA (will default to pre-computed PCA if already done) with `PCA_comp` components, and an additional `CCA` step for multimodal data. Set `use_cca_feeler=True` for this CCA step, which involves basic/coarse feeler alignment (`spatial_only: bool = True` to do a spatial-only feeler, `feature_only = True` to do a feature-only feeler, or if both `False` a basic spatial-feature feeler). This subsets feature dimensions which are correlated across modalities, and you can specify the number of final CCA dimensions with `CCA_comp`.
 
-To keep `st.X` and `msi.X` as-is without processing, set `use_cca_feeler=False`, `use_pca_X/Z=False`, and `log1p_X/Z=False`. We do not assume common/joint features in multimodal data generally and do independent internal PCA steps. For unimodal (e.g. transcriptomics-transcriptomics) we recommend an external joint PCA: see, e.g. `experiments/mgw_mouse_embryo.ipynb` for an example of this pre-processing.
+To run on the raw `st.X` and `msi.X` as-is without processing, set `use_cca_feeler=False`, `use_pca_X/Z=False`, and `log1p_X/Z=False`. We do not assume common/joint features in multimodal data generally and do independent internal PCA steps. For unimodal (e.g. transcriptomics-transcriptomics) we recommend an external joint PCA: see, e.g. `experiments/mgw_mouse_embryo.ipynb` for an example of this pre-processing.
 
 ```python
 import mgw.mgw as mgw
