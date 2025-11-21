@@ -108,7 +108,14 @@ We have a number of variables which can be accessed from `out`.
 - `G_M`/`G_N`: Pull-back metric tensor field over coordinates
 - `C_M`/`C_N`: MGW Riemannian distance matrices
 
+As an example, let us return the alignment and barycentrically project across modalities.
+
 ```python
 P = out["P"]
 from mgw.evaulation import bary_proj
+adata_sm2st = bary_proj(st, msi, P)
+adata_st2sm = bary_proj(msi, st, P.T)
 ```
+
+`P` represents the **MGW** alignment, `adata_sm2st` is the metabolomics to transcriptomics projection (added to `st` as metabolite annotation), and `adata_st2sm` is the transcriptomics to metabolomics projection.
+
