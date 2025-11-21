@@ -8,9 +8,20 @@ In the section below, we detail the usage of MGW which complements the simple ex
 ```
 
 ## Contents
-- `mgw/`: Python modules (mgw, geometry, models, etc)
+`mgw/`
+  - `mgw.py` — main solver/class for MGW
+  - `geometry.py` — metric-tensor, geodesic distance, k-NN graph, APSP utilities
+  - `models.py` — neural field models (MLP)
+  - `metric.py` — evaluation metrics (e.g. migration, AMI, cosine similarity(
+  - `plotting.py` — visualization utilities
+  - `utils.py` — miscellaneous helpers, barycentric projection
+`validation/`
+  - `dopamine.py` — validation utilities for dopamine experiments (AUROC, AUPRC)
+  - `run_methods.py` — code for running other methods (moscot Translation, SCOT, SCOTv2, PASTE2 FGW spatial, POT FGW spatial only)
+`demos/`
+  - `demo_mgw_y7.ipynb` — demo notebook for running MGW on the Y_7 ccRCC slice (Hu '24)
+  - `riemannian_mouse_geodesics.ipynb` — code for visualization of the geodesics in the Riemannian pull-back metric of E9.5-10.5 mouse embryo (Chen '22)
 - Reproducible experimental notebooks on Stereo-Seq Mouse Embryo, Visium-Xenium alignment of colorectal cancer, MALDI-MSI metabolomics and Visium transcriptomics alignment of human striatum, AFADESI-MSI and Visium alignment of renal cancer
-- Example notebooks demonstrating usage on the Y_7 slice
 
 ## **Getting Started**
 
