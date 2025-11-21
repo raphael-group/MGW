@@ -32,18 +32,18 @@ In the section below, we detail the usage of MGW which complements the simple ex
 ## **Getting Started**
 
 ### **1. Load the two multiomic datasets **
-Load two AnnData objects such as spatial transcriptomics (**st**) and spatial metabolomics (**msi**) after appropriate filtering.
+Load two AnnData objects such as spatial transcriptomics (`st`) and spatial metabolomics (`msi`) after appropriate filtering.
 ```python
 import anndata as ad
 st = ad.read_h5ad(ST_PATH)
 msi = ad.read_h5ad(MSI_PATH)
 ```
 ### **1. Running MGW's pre-processing (optional) the two multiomic datasets **
-Call **mgw.mgw_preprocess** on two AnnDatas. 
+Call `mgw.mgw_preprocess` on two AnnDatas. 
 
-You can run PCA (will default to pre-computed PCA if already done) with **PCA_comp** components, and an additional **CCA** step for multimodal data. Set **use_cca_feeler=True** for this CCA step, which involves basic/coarse feeler alignment (**spatial_only: bool = True** to do a spatial-only feeler, **feature_only = True** to do a feature-only feeler, or if both False a basic spatial-feature feeler). This subsets feature dimensions which are correlated across modalities, and you can specify the number of final CCA dimensions with **CCA_comp**.
+You can run PCA (will default to pre-computed PCA if already done) with `PCA_comp` components, and an additional `CCA` step for multimodal data. Set `use_cca_feeler=True` for this CCA step, which involves basic/coarse feeler alignment (`spatial_only: bool = True` to do a spatial-only feeler, `feature_only = True` to do a feature-only feeler, or if both `False` a basic spatial-feature feeler). This subsets feature dimensions which are correlated across modalities, and you can specify the number of final CCA dimensions with `CCA_comp`.
 
-To keep **st.X** and **msi.X** as-is without processing, set **use_cca_feeler=False**, **use_pca_X/Z=False**, and **log1p_X/Z=False**.
+To keep `st.X` and `msi.X` as-is without processing, set `use_cca_feeler=False`, `use_pca_X/Z=False`, and `log1p_X/Z=False`.
 
 ```python
 import mgw.mgw as mgw
@@ -62,7 +62,7 @@ pre = mgw.mgw_preprocess(
 
 ### **2. Run MGW **
 
-Next, we run **mgw.mgw_align_core** on the data **pre** to both infer the neural fields, learn metric tensors, and align the result with Gromov-Wasserstein.
+Next, we run `mgw.mgw_align_core` on the data **pre** to both infer the neural fields, learn metric tensors, and align the result with Gromov-Wasserstein.
 ```python
 
 PHI_ARC = (128,256,256,128)
@@ -90,23 +90,23 @@ out = mgw.mgw_align_core(
     )
 ```
 Here, the key parameters are
-`PHI_ARC`: Layers of the MLP
-`KNN_K`: Resolution of the K nearest neighbor graph used for Riemannian geodesics
-`DEFAULT_GW_PARAMS`: Default parameters for the optimal transport solver of **ott jax**
-`DEFAULT_LR`: Learning-rate for the network.
-`DEFAULT_ITER`: Number of training iterations for the network.
-`save_dir`: Where to save outputs
-`tag`: Tag for generated files.
+- `PHI_ARC`: Layers of the MLP
+- `KNN_K`: Resolution of the K nearest neighbor graph used for Riemannian geodesics
+- `DEFAULT_GW_PARAMS`: Default parameters for the optimal transport solver of **ott jax**
+- `DEFAULT_LR`: Learning-rate for the network.
+- `DEFAULT_ITER`: Number of training iterations for the network.
+- `save_dir`: Where to save outputs
+- `tag`: Tag for generated files.
 
 ### **3. Return alignment and project across modalities **
 We have a number of variables which can be accessed from `out`.
-`P`: MGW coupling/alignment
-`xs`: Spatial coordinates 1 (normalized)
-`xs2`: Spatial coordinates 2 (normalized)
-`phi`: Neural field mapping into modality 1
-`psi`: Neural field mapping into modality 2
- `G_M`/`G_N`: Pull-back metric tensor field over coordinates
- `C_M`/`C_N`: MGW Riemannian distance matrices
+- `P`: MGW coupling/alignment
+- `xs`: Spatial coordinates 1 (normalized)
+- `xs2`: Spatial coordinates 2 (normalized)
+- `phi`: Neural field mapping into modality 1
+- `psi`: Neural field mapping into modality 2
+- `G_M`/`G_N`: Pull-back metric tensor field over coordinates
+- `C_M`/`C_N`: MGW Riemannian distance matrices
 
 ```python
 P = out["P"]
