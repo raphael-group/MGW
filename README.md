@@ -117,5 +117,5 @@ adata_sm2st = bary_proj(st, msi, P)
 adata_st2sm = bary_proj(msi, st, P.T)
 ```
 
-`P` represents the **MGW** alignment, `adata_sm2st` is the metabolomics to transcriptomics projection (added to `st` as metabolite annotation), and `adata_st2sm` is the transcriptomics to metabolomics projection.
+`P` represents the **MGW** alignment, `adata_sm2st` is the metabolomics to transcriptomics projection (added to `st` as metabolite annotation), and `adata_st2sm` is the transcriptomics to metabolomics projection (added to `msi` as metabolite annotation).
 
