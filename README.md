@@ -5,9 +5,10 @@ This the repository for **["Riemannian Metric Learning for Alignment of Spatial 
  2. Infers Riemannian (geodesic) distances.
  3. Aligns Riemannian distances with Gromov-Wasserstein Optimal Transport.
 
-In the section below, we detail the usage of MGW which complements the simple example notebook:
+In the section below, we detail the usage of MGW which complements the simple demo notebooks:
 ```markdown
 - [demo_mgw_y7.ipynb](demo_mgw_y7.ipynb)
+- [mouse_align.ipynb](mouse_align.ipynb)
 ```
 
 ## Contents
@@ -25,7 +26,8 @@ In the section below, we detail the usage of MGW which complements the simple ex
 
 `demos/`
   - `demo_mgw_y7.ipynb` — demo notebook for running MGW on the Y_7 ccRCC slice (Hu '24)
-  - `riemannian_mouse_geodesics.ipynb` — code for visualization of the geodesics in the Riemannian pull-back metric of E9.5-10.5 mouse embryo (Chen '22)
+  - `mouse_align.ipynb` - demo notebook for aligning Spatiotemporal Transcriptomics with MGW on E9.5-10.5 mouse embryo timepoint pair (Chen '22)
+  - `riemannian_mouse_geodesics.ipynb` — demo visualization of the geodesics in the Riemannian pull-back metric of E9.5-10.5 mouse embryo (Chen '22)
 
 `experiments/`
 - Reproducible experimental notebooks on Stereo-Seq Mouse Embryo, Visium-Xenium alignment of colorectal cancer, MALDI-MSI metabolomics and Visium transcriptomics alignment of human striatum, AFADESI-MSI and Visium alignment of renal cancer.
