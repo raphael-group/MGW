@@ -102,7 +102,8 @@ Here, the key parameters are
 - `save_dir`: Where to save outputs
 - `tag`: Tag for generated files.
 
-### **3. Return alignment and project across modalities **
+**3. Return alignment and project across modalities **
+
 We have a number of variables which can be accessed from `out`.
 - `P`: MGW coupling/alignment
 - `xs`: Spatial coordinates 1 (normalized)
