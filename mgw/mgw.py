@@ -23,10 +23,22 @@ def mgw_preprocess(
     # feeler flavors
     spatial_only: bool = True,
     feature_only: bool = False,
+    # normalization
+    rep_norm: str = "l2",
     # misc
     verbose: bool = True,
 ) -> Dict[str, Any]:
-    """Preprocess A,B into unit-square coords + representation features."""
+    """Preprocess A,B into unit-square coords + representation features.
+
+    Parameters
+    ----------
+    rep_norm : str, default "l2"
+        How to normalize the CCA / feature representations fed to the
+        neural fields.  ``"l2"`` applies sklearn L2 row-normalisation
+        (existing default).  ``"zscore"`` applies per-column zero-mean
+        unit-variance scaling (matches the original experiment in
+        ``mgw_mouse_embryo.ipynb`` which used ``util.normalize_range``).
+    """
     A_ = _maybe_subsample(A, max_obs_A)
     B_ = _maybe_subsample(B, max_obs_B)
 
@@ -80,9 +92,13 @@ def mgw_preprocess(
     X_pca = normalize(X_pca)
     Z_pca = normalize(Z_pca)
     
-    # L2 row-norm for model targets
-    X_rep = normalize(X_rep)
-    Z_rep = normalize(Z_rep)
+    # Normalize representation features for neural-field targets
+    if rep_norm == "zscore":
+        X_rep = util.normalize_range_np(X_rep)
+        Z_rep = util.normalize_range_np(Z_rep)
+    else:  # default: "l2"
+        X_rep = normalize(X_rep)
+        Z_rep = normalize(Z_rep)
     
     return dict(
         A_=A_, B_=B_,
@@ -95,6 +111,7 @@ def mgw_preprocess(
             feeler_downsample=feeler_downsample, log1p_X=log1p_X, log1p_Z=log1p_Z,
             use_pca_X=use_pca_X, use_pca_Z=use_pca_Z,
             spatial_only=spatial_only, feature_only=feature_only,
+            rep_norm=rep_norm,
             max_obs_A=max_obs_A, max_obs_B=max_obs_B,
         ),
     )
@@ -226,6 +243,7 @@ def mgw_align(
     use_pca_X: bool = True, use_pca_Z: bool = True,
     max_obs_A: Optional[int] = None, max_obs_B: Optional[int] = None,
     spatial_only: bool = True, feature_only: bool = False,
+    rep_norm: str = "l2",
     # core knobs
     widths: tuple = (128, 256, 256, 128), lr: float = 1e-3,
     niter: int = 20_000, print_every: int = 1_000,
@@ -244,6 +262,7 @@ def mgw_align(
         use_pca_X=use_pca_X, use_pca_Z=use_pca_Z,
         max_obs_A=max_obs_A, max_obs_B=max_obs_B,
         spatial_only=spatial_only, feature_only=feature_only,
+        rep_norm=rep_norm,
         verbose=verbose,
     )
     return mgw_align_core(
