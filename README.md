@@ -1,4 +1,5 @@
 # Riemannian Metric Learning for Alignment of Spatial Multiomics (Manifold Gromov-Wasserstein or MGW)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20074368.svg)](https://doi.org/10.5281/zenodo.20074368)
 
 This the repository for **["Riemannian Metric Learning for Alignment of Spatial Multiomics."]()** a technique which:
  1. Performs Riemannian metric learning across spatial modalities (multimoics, transcriptomics, and so on) using the Riemannian pull-back metric.
