@@ -1,4 +1,10 @@
+import os
+
 import numpy as np
+
+# Match MGW package defaults even if this module is imported directly: avoid
+# JAX/OTT preallocating most GPU memory alongside PyTorch workloads.
+os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 from ott.problems.quadratic import quadratic_problem
 from ott.solvers.linear.sinkhorn import Sinkhorn
 from ott.solvers.quadratic.gromov_wasserstein import GromovWasserstein
