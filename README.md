@@ -10,6 +10,8 @@ In the section below, we detail the usage of MGW which complements the simple de
 ```markdown
 - [demo_mgw_y7.ipynb](demo_mgw_y7.ipynb)
 - [mouse_align.ipynb](mouse_align.ipynb)
+- [riemannian_mouse_tensor.ipynb](riemannian_mouse_tensor.ipynb)
+- [riemannian_mouse_geodesics.ipynb](riemannian_mouse_geodesics.ipynb)
 ```
 
 ## Contents
