@@ -275,6 +275,17 @@ def mgw_align(
         verbose=verbose, plot_net=plot_net,
     )
 
+def transfer(adata_a, adata_b, P, tag_a="A", tag_b="B", eps=1e-12):
+    """Barycentrically project features from adata_b onto adata_a's coordinate space.
+
+    P must be a (n_a, n_b) coupling matrix as returned by mgw_align.
+    To project in the reverse direction call transfer(adata_b, adata_a, P.T).
+
+    Returns an AnnData on adata_a's spatial grid whose .X concatenates
+    adata_a's original features with the projected adata_b features.
+    """
+    return util.bary_proj(adata_a, adata_b, P, first_tag=tag_a, second_tag=tag_b, eps=eps)
+
 def _to_unit_square(x: np.ndarray) -> np.ndarray:
     return util.normalize_coords_to_unit_square(np.asarray(x, dtype=float))
 

@@ -3,11 +3,14 @@ tensor_vis.py — Riemannian deformation-grid visualisation for MGW.
 
 Public API
 ----------
+plot_deformation_grids(out, labels=None, ...)
+    High-level entry point: accepts the dict returned by mgw.mgw_align_core and
+    produces a two-panel deformation-grid figure in one call.
+
 plot_deformation_grid(ax, coords, W, G_tensors, label, **kwargs)
-    Draw the Riemannian deformation grid on *ax*.  Grid lines are level sets
-    of two harmonic scalar fields (u: left→right, v: bottom→top) solved on
-    the Riemannian kNN graph W via the Laplace-Beltrami operator.  The
-    background heatmap shows local metric anisotropy log(λ_max / λ_min).
+    Low-level single-panel function.  Grid lines are level sets of two harmonic
+    scalar fields (u: left→right, v: bottom→top) solved on the Riemannian kNN
+    graph W via the Laplace-Beltrami operator.  Background shows log(λ_max/λ_min).
 
 Helper functions (also importable)
 -----------------------------------
@@ -210,3 +213,78 @@ def plot_deformation_grid(ax, coords, W, G_tensors, label,
     ax.axis('off')
     ax.set_title(label, fontsize=13, fontweight='bold')
     return im
+
+
+def plot_deformation_grids(out, labels=None, knn_k=None, W_M=None, W_N=None,
+                           figsize=(16, 7.5), save=None, **kwargs):
+    """
+    Plot Riemannian deformation grids for both datasets from mgw_align_core output.
+
+    A high-level wrapper around plot_deformation_grid that builds the Riemannian
+    kNN graphs internally and composes the two-panel figure with colorbars.
+
+    Parameters
+    ----------
+    out : dict
+        Output of mgw.mgw_align_core, or any dict with keys 'xs', 'xs2', 'G_M',
+        'G_N'. If 'config' is present, knn_k is read from it automatically.
+    labels : list of 2 str, optional
+        Subplot title for each dataset. Defaults to ['Dataset 1', 'Dataset 2'].
+    knn_k : int, optional
+        Neighbours for the Riemannian kNN graph. Read from out['config'] if omitted,
+        falling back to 12.
+    W_M, W_N : scipy sparse matrices, optional
+        Pre-computed arc-length–weighted kNN graphs. Omit to build them internally.
+    figsize : tuple
+        Figure size in inches.
+    save : str or None
+        Path prefix; saves <save>.pdf and <save>.png when provided.
+    **kwargs
+        Forwarded to plot_deformation_grid (e.g. n_lines, lw, bg_cmap, pad).
+
+    Returns
+    -------
+    fig : matplotlib Figure
+
+    Examples
+    --------
+    >>> out = mgw.mgw_align_core(pre, ...)
+    >>> from mgw.tensor_vis import plot_deformation_grids
+    >>> plot_deformation_grids(out, labels=['E9.5', 'E10.5'])
+    """
+    from mgw.geometry import knn_graph
+    from mgw.plotting import build_weighted_graph
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+    xs, xs2 = out['xs'], out['xs2']
+    G_M, G_N = out['G_M'], out['G_N']
+    if knn_k is None:
+        knn_k = out.get('config', {}).get('knn_k', 12)
+
+    if W_M is None:
+        W_M = build_weighted_graph(xs, G_M, knn_graph(xs, k=knn_k))
+    if W_N is None:
+        W_N = build_weighted_graph(xs2, G_N, knn_graph(xs2, k=knn_k))
+
+    if labels is None:
+        labels = ['Dataset 1', 'Dataset 2']
+
+    fig, axes = plt.subplots(1, 2, figsize=figsize, facecolor='white',
+                             constrained_layout=True)
+
+    im0 = plot_deformation_grid(axes[0], xs,  W_M, G_M, labels[0], **kwargs)
+    im1 = plot_deformation_grid(axes[1], xs2, W_N, G_N, labels[1], **kwargs)
+
+    for ax, im in zip(axes, [im0, im1]):
+        div = make_axes_locatable(ax)
+        cax = div.append_axes('right', size='3%', pad=0.1)
+        cb = fig.colorbar(im, cax=cax)
+        cb.set_label(r'$\log(\lambda_{\max}/\lambda_{\min})$', fontsize=9)
+        cb.ax.tick_params(labelsize=8)
+
+    if save is not None:
+        fig.savefig(save + '.pdf', dpi=300, bbox_inches='tight')
+        fig.savefig(save + '.png', dpi=300, bbox_inches='tight')
+        print(f'Saved → {save}.*')
+
+    return fig

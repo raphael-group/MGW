@@ -12,6 +12,7 @@ from .gw import solve_gw_ott
 import anndata as ad
 from sklearn.utils import sparsefuncs as sf
 from sklearn.preprocessing import normalize as l2_normalize_rows
+import pandas as pd
 
 def _barycentric_right(P, Y, a=None, eps=1e-12):
     P = np.asarray(P, dtype=np.float64)
@@ -336,3 +337,55 @@ def get_or_compute_pca(adata, layer=None, n_comps=30, log1p=True, key="X_pca"):
         adata.obsm[key] = X_pca  # optionally cache it
     #X_pca = normalize(X_pca)
     return X_pca
+
+def _to_numpy(X):
+    return X.toarray() if sp.issparse(X) else np.asarray(X)
+    
+def to_dense_row(x):
+    return x.toarray() if sp.issparse(x) else np.asarray(x)
+
+def bary_proj(adata_st, adata_sm, P_csr, first_tag="ST", second_tag ="SM", eps=1e-12):
+    """
+    adata_st.X: (n_st, g)
+    adata_sm.X: (n_sm, m)
+    P_csr: csr_matrix, shape (n_st, n_sm)
+    returns joint AnnData on ST grid with X=[genes | projected metabolites]
+    """
+    assert P_csr.shape == (adata_st.n_obs, adata_sm.n_obs)
+
+    X_st = adata_st.X.toarray()
+    X_sm = adata_sm.X.toarray()
+
+    # Barycentric projection: SM -> ST
+    # (n_st x n_sm) @ (n_sm x m) => (n_st x m)
+    X_sm_to_st = _barycentric_right(P_csr, X_sm, eps=eps)
+
+    X_joint = sp.hstack([X_st, X_sm_to_st], format='csr') if (sp.issparse(X_st) or sp.issparse(X_sm_to_st)) \
+              else np.hstack([to_dense_row(X_st), to_dense_row(X_sm_to_st)])
+
+    var_st = adata_st.var.copy()
+    var_sm = adata_sm.var.copy()
+    var_st["type"] = first_tag
+    var_sm["type"] = second_tag
+
+    var_st = var_st.copy()
+    var_st.index = ["g:" + str(i) for i in var_st.index]
+    var_sm = var_sm.copy()
+    var_sm.index = ["m:" + str(i) for i in var_sm.index]
+    var_joint = pd.concat([var_st, var_sm])
+
+    # New AnnData on ST grid
+    adata_joint = ad.AnnData(
+        X=X_joint,
+        obs=adata_st.obs.copy(),
+        var=var_joint,
+        obsm=adata_st.obsm.copy(),
+        obsp=adata_st.obsp.copy() if hasattr(adata_st, "obsp") else None,
+        uns=adata_st.uns.copy()
+    )
+
+    adata_joint.uns["joint_base"] = first_tag
+    adata_joint.uns["features"] = {"genes_prefix": "g:", "metabolites_prefix": "m:"}
+    adata_joint.obsm[f"coupling_to_{second_tag}"] = P_csr  # shape: (n_ST, n_SM)
+
+    return adata_joint

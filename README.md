@@ -14,12 +14,13 @@ In the section below, we detail the usage of MGW which complements the simple de
 
 ## Contents
 `mgw/`
-  - `mgw.py` — main solver/class for MGW
+  - `mgw.py` — main solver: `mgw_preprocess`, `mgw_align_core`, `mgw_align`, `transfer`
   - `geometry.py` — metric-tensor, geodesic distance, k-NN graph, APSP utilities
   - `models.py` — neural field models (MLP)
-  - `metric.py` — evaluation metrics (e.g. migration, AMI, cosine similarity(
+  - `metric.py` — evaluation metrics (e.g. migration, AMI, cosine similarity)
   - `plotting.py` — visualization utilities
-  - `utils.py` — miscellaneous helpers, barycentric projection
+  - `tensor_vis.py` — Riemannian deformation-grid visualization
+  - `util.py` — miscellaneous helpers, barycentric projection
 
 `validation/`
   - `dopamine.py` — validation utilities for dopamine experiments (AUROC, AUPRC)
@@ -35,14 +36,14 @@ In the section below, we detail the usage of MGW which complements the simple de
 
 ## **Getting Started**
 
-### **1. Load the two multiomic datasets **
+### **1. Load the two multiomic datasets**
 Load two AnnData objects such as spatial transcriptomics (`st`) and spatial metabolomics (`msi`) after appropriate filtering.
 ```python
 import anndata as ad
 st = ad.read_h5ad(ST_PATH)
 msi = ad.read_h5ad(MSI_PATH)
 ```
-### **1. Running MGW's pre-processing (optional) the two multiomic datasets **
+### **2. Run MGW preprocessing**
 Call `mgw.mgw_preprocess` on two AnnDatas. 
 
 You can run PCA (will default to pre-computed PCA if already done) with `PCA_comp` components, and an additional `CCA` step for multimodal data. Set `use_cca_feeler=True` for this CCA step, which involves basic/coarse feeler alignment (`spatial_only: bool = True` to do a spatial-only feeler, `feature_only = True` to do a feature-only feeler, or if both `False` a basic spatial-feature feeler). This subsets feature dimensions which are correlated across modalities, and you can specify the number of final CCA dimensions with `CCA_comp`.
@@ -64,7 +65,7 @@ pre = mgw.mgw_preprocess(
 )
 ```
 
-### **2. Run MGW **
+### **3. Run MGW**
 
 Next, we run `mgw.mgw_align_core` on the data **pre** to both infer the neural fields, learn metric tensors, and align the result with Gromov-Wasserstein.
 ```python
@@ -88,9 +89,8 @@ out = mgw.mgw_align_core(
         save_dir=EXP_PATH, 
         tag=EXP_TAG, 
         verbose=True,
-        plot_net=True, # zoom in to visually check if the two modalities shown similar pattern
-        use_cca = True, #for multi-modal, we recommend setting to TRUE
-        gw_params = DEFAULT_GW_PARAMS
+        plot_net=True,
+        gw_params=DEFAULT_GW_PARAMS
     )
 ```
 Here, the key parameters are
@@ -103,7 +103,7 @@ Here, the key parameters are
 - `save_dir`: Where to save outputs
 - `tag`: Tag for generated files.
 
-### **3. Return alignment and project across modalities **
+### **4. Transfer features across modalities**
 
 We have a number of variables which can be accessed from `out`.
 - `P`: MGW coupling/alignment
@@ -118,10 +118,18 @@ As an example, let us return the alignment and barycentrically project across mo
 
 ```python
 P = out["P"]
-from mgw.evaulation import bary_proj
-adata_sm2st = bary_proj(st, msi, P)
-adata_st2sm = bary_proj(msi, st, P.T)
+adata_sm2st = mgw.transfer(st, msi, P)
+adata_st2sm = mgw.transfer(msi, st, P.T)
 ```
 
 `P` represents the **MGW** alignment, `adata_sm2st` is the metabolomics to transcriptomics projection (added to `st` as metabolite annotation), and `adata_st2sm` is the transcriptomics to metabolomics projection (added to `msi` as transcriptomics annotation).
+
+### **5. Visualize the Riemannian deformation grid**
+
+The deformation grid shows how the learned metric $g_{\mu\nu}(x) = J_\varphi^\top J_\varphi$ deforms the tissue. Grid lines are level sets of harmonic coordinate fields on the Riemannian kNN graph; the background heatmap encodes local anisotropy $\log(\lambda_{\max}/\lambda_{\min})$.
+
+```python
+from mgw.tensor_vis import plot_deformation_grids
+plot_deformation_grids(out, labels=['Dataset 1', 'Dataset 2'])
+```
 
