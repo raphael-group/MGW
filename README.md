@@ -115,7 +115,7 @@ where $C_M(i,i') \propto d_M(i,i')^p$ and $d_M$ is the Riemannian geodesic dista
 
 | `cost_p` | Cost matrix | Behaviour |
 |----------|-------------|-----------|
-| `2` (default) | $C \propto d^2$ | Emphasises large inter-point separations quadratically; equivalent to comparing *squared* geodesic distances and more sensitive to the global spread of the tissue. Standard choice in GW theory. |
+| `2` (default) | $C \propto d^2$ | Emphasises large inter-point separations quadratically; equivalent to comparing *squared* geodesic distances and more sensitive to the global spread of the tissue. |
 | `1` | $C \propto d$ | Linear in distance; de-emphasises very large pairs and is more robust to outlier spots or disconnected tissue regions. Can be preferable when the two datasets differ substantially in spatial scale or cell density. |
 
 We recommend starting with `cost_p=2` and trying `cost_p=1` if the alignment appears dominated by a small number of outlier long-range pairs.
