@@ -88,6 +88,7 @@ out = mgw.mgw_align_core(
         niter=DEFAULT_ITER,
         knn_k=KNN_K,
         geodesic_eps=DEFAULT_EPS,
+        cost_p=2,             # 1 or 2 — see note below
         save_dir=EXP_PATH, 
         tag=EXP_TAG, 
         verbose=True,
@@ -104,6 +105,20 @@ Here, the key parameters are
 - `DEFAULT_ITER`: Number of training iterations for the network.
 - `save_dir`: Where to save outputs
 - `tag`: Tag for generated files.
+- `cost_p`: Power applied to Riemannian geodesic distances before GW alignment — see note below.
+
+**Choosing `cost_p`.**  The GW objective minimised by MGW is
+
+$$\min_{\pi} \sum_{i,i',j,j'} \bigl(C_M(i,i') - C_N(j,j')\bigr)^2 \pi_{ij}\,\pi_{i'j'}$$
+
+where $C_M(i,i') \propto d_M(i,i')^p$ and $d_M$ is the Riemannian geodesic distance.  The choice of $p$ determines which aspects of the geometry the alignment prioritises:
+
+| `cost_p` | Cost matrix | Behaviour |
+|----------|-------------|-----------|
+| `2` (default) | $C \propto d^2$ | Emphasises large inter-point separations quadratically; equivalent to comparing *squared* geodesic distances and more sensitive to the global spread of the tissue. Standard choice in GW theory. |
+| `1` | $C \propto d$ | Linear in distance; de-emphasises very large pairs and is more robust to outlier spots or disconnected tissue regions. Can be preferable when the two datasets differ substantially in spatial scale or cell density. |
+
+We recommend starting with `cost_p=2` and trying `cost_p=1` if the alignment appears dominated by a small number of outlier long-range pairs.
 
 ### **4. Transfer features across modalities**
 

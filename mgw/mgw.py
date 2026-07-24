@@ -129,6 +129,7 @@ def mgw_align_core(
     geodesic_eps: float = 1e-2,
     # GW solver
     gw_params: Optional[Dict[str, Any]] = None,
+    cost_p: int = 2,
     # device / dtype
     device: Optional[str] = None,
     torch_default_dtype: torch.dtype = torch.float64,
@@ -203,8 +204,11 @@ def mgw_align_core(
         q = np.quantile(D[np.triu_indices_from(D, 1)], 0.99)
         return D / (q + 1e-12)
 
-    C_M = _norm_geod(D_M)**2; C_M /= (C_M.max() + 1e-12)
-    C_N = _norm_geod(D_N)**2; C_N /= (C_N.max() + 1e-12)
+    if cost_p not in (1, 2):
+        raise ValueError(f"cost_p must be 1 or 2, got {cost_p}")
+    if verbose: print(f"[mgw.core] cost matrices: d^{cost_p} (cost_p={cost_p})")
+    C_M = _norm_geod(D_M)**cost_p; C_M /= (C_M.max() + 1e-12)
+    C_N = _norm_geod(D_N)**cost_p; C_N /= (C_N.max() + 1e-12)
 
     if gw_params is None:
         gw_params = dict(verbose=True, inner_maxit=3000, outer_maxit=3000,
@@ -228,7 +232,7 @@ def mgw_align_core(
             **pre["config"],
             widths=widths, lr=lr, niter=niter,
             knn_k=knn_k, geodesic_eps=geodesic_eps,
-            gw_params=gw_params, device=device,
+            gw_params=gw_params, cost_p=cost_p, device=device,
             save_dir=save_dir, tag=tag,
         )
     )
@@ -249,6 +253,7 @@ def mgw_align(
     niter: int = 20_000, print_every: int = 1_000,
     knn_k: int = 12, geodesic_eps: float = 1e-2,
     gw_params: Optional[Dict[str, Any]] = None,
+    cost_p: int = 2,
     device: Optional[str] = None, torch_default_dtype: torch.dtype = torch.float64,
     save_dir: Optional[str] = None, tag: Optional[str] = None,
     verbose: bool = True, plot_net: bool = False,
@@ -269,7 +274,7 @@ def mgw_align(
         pre,
         widths=widths, lr=lr, niter=niter, print_every=print_every,
         knn_k=knn_k, geodesic_eps=geodesic_eps,
-        gw_params=gw_params,
+        gw_params=gw_params, cost_p=cost_p,
         device=device, torch_default_dtype=torch_default_dtype,
         save_dir=save_dir, tag=tag,
         verbose=verbose, plot_net=plot_net,
