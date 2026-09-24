@@ -19,10 +19,10 @@ class PhiModel(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-def train_phi(model:PhiModel, x, y, lr=1e-3, niter=2000, print_every=100, device="cpu"):
+def train_phi(model:PhiModel, x, y, lr=1e-3, niter=2000, print_every=100, device="cpu", fused=False):
     model = model.to(device)
     x = x.to(device); y = y.to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    opt = torch.optim.Adam(model.parameters(), lr=lr, fused=fused)
     mse = nn.MSELoss()
     for t in range(1, niter+1):
         pred = model(x)

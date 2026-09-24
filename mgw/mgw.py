@@ -130,6 +130,9 @@ def mgw_align_core(
     # GW solver
     gw_params: Optional[Dict[str, Any]] = None,
     cost_p: int = 2,
+    seed: Optional[int] = 0,
+    deterministic: bool = False,
+    n_restarts: int = 3,
     # device / dtype
     device: Optional[str] = None,
     torch_default_dtype: torch.dtype = torch.float64,
@@ -152,12 +155,36 @@ def mgw_align_core(
     suffix = "" if not save_dir else ("" if tag is None else f"_{tag}")
     if save_dir: os.makedirs(save_dir, exist_ok=True)
 
+    if n_restarts > 1 and not (save_dir and os.path.isfile(os.path.join(save_dir, f"phi{suffix}.pt"))):
+        best, best_obj = None, np.inf
+        for k in range(n_restarts):
+            run = mgw_align_core(pre, widths=widths, lr=lr, niter=niter, print_every=print_every, knn_k=knn_k,
+                                 geodesic_eps=geodesic_eps, gw_params=gw_params, cost_p=cost_p,
+                                 seed=None if seed is None else seed + k, deterministic=deterministic, n_restarts=1,
+                                 device=device, torch_default_dtype=torch_default_dtype, verbose=verbose, plot_net=plot_net)
+            obj = _gw_objective(run["C_M"], run["C_N"], run["P"], device)
+            if verbose: print(f"[mgw.core] restart {k + 1}/{n_restarts}: GW objective={obj:.6e}")
+            if obj < best_obj: best, best_obj = run, obj
+        best["config"].update(n_restarts=n_restarts, save_dir=save_dir, tag=tag)
+        if save_dir:
+            torch.save(best["phi"].state_dict(), os.path.join(save_dir, f"phi{suffix}.pt"))
+            torch.save(best["psi"].state_dict(), os.path.join(save_dir, f"psi{suffix}.pt"))
+            np.save(os.path.join(save_dir, f"P{suffix}.npy"), best["P"])
+        return best
+
     xs_t, xs2_t = torch.from_numpy(xs).to(device), torch.from_numpy(xs2).to(device)
     ys_t, ys2_t = torch.from_numpy(X_rep).to(device), torch.from_numpy(Z_rep).to(device)
     dim_e, dim_f_M, dim_f_N = 2, ys_t.shape[1], ys2_t.shape[1]
     if verbose: print(f"[mgw.core] dims: E=2, F_M={dim_f_M}, F_N={dim_f_N}")
 
     # φ, ψ
+    if seed is not None:
+        torch.manual_seed(seed); torch.cuda.manual_seed_all(seed); np.random.seed(seed)
+        if verbose: print(f"[mgw.core] seed={seed}")
+    if deterministic:
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        torch.use_deterministic_algorithms(True)
+        if verbose: print("[mgw.core] deterministic training (fused Adam, deterministic kernels)")
     phi = models.PhiModel(2, dim_f_M, widths=widths).to(device)
     psi = models.PhiModel(2, dim_f_N, widths=widths).to(device)
 
@@ -173,8 +200,8 @@ def mgw_align_core(
         phi.eval(); psi.eval()
     else:
         if verbose: print("[mgw.core] training φ, ψ")
-        phi = models.train_phi(phi, xs_t,  ys_t,  lr=lr, niter=niter, print_every=print_every, device=device)
-        psi = models.train_phi(psi, xs2_t, ys2_t, lr=lr, niter=niter, print_every=print_every, device=device)
+        phi = models.train_phi(phi, xs_t,  ys_t,  lr=lr, niter=niter, print_every=print_every, device=device, fused=deterministic)
+        psi = models.train_phi(psi, xs2_t, ys2_t, lr=lr, niter=niter, print_every=print_every, device=device, fused=deterministic)
         phi.eval(); psi.eval()
         if save_dir:
             torch.save(phi.state_dict(), phi_path)
@@ -232,7 +259,7 @@ def mgw_align_core(
             **pre["config"],
             widths=widths, lr=lr, niter=niter,
             knn_k=knn_k, geodesic_eps=geodesic_eps,
-            gw_params=gw_params, cost_p=cost_p, device=device,
+            gw_params=gw_params, cost_p=cost_p, seed=seed, deterministic=deterministic, n_restarts=n_restarts, device=device,
             save_dir=save_dir, tag=tag,
         )
     )
@@ -253,7 +280,7 @@ def mgw_align(
     niter: int = 20_000, print_every: int = 1_000,
     knn_k: int = 12, geodesic_eps: float = 1e-2,
     gw_params: Optional[Dict[str, Any]] = None,
-    cost_p: int = 2,
+    cost_p: int = 2, seed: Optional[int] = 0, deterministic: bool = False, n_restarts: int = 3,
     device: Optional[str] = None, torch_default_dtype: torch.dtype = torch.float64,
     save_dir: Optional[str] = None, tag: Optional[str] = None,
     verbose: bool = True, plot_net: bool = False,
@@ -274,7 +301,7 @@ def mgw_align(
         pre,
         widths=widths, lr=lr, niter=niter, print_every=print_every,
         knn_k=knn_k, geodesic_eps=geodesic_eps,
-        gw_params=gw_params, cost_p=cost_p,
+        gw_params=gw_params, cost_p=cost_p, seed=seed, deterministic=deterministic, n_restarts=n_restarts,
         device=device, torch_default_dtype=torch_default_dtype,
         save_dir=save_dir, tag=tag,
         verbose=verbose, plot_net=plot_net,
@@ -290,6 +317,11 @@ def transfer(adata_a, adata_b, P, tag_a="A", tag_b="B", eps=1e-12):
     adata_a's original features with the projected adata_b features.
     """
     return util.bary_proj(adata_a, adata_b, P, first_tag=tag_a, second_tag=tag_b, eps=eps)
+
+def _gw_objective(C1, C2, P, device) -> float:
+    C1, C2, P = (torch.as_tensor(np.asarray(a), dtype=torch.float64, device=device) for a in (C1, C2, P))
+    p, q = P.sum(1), P.sum(0)
+    return float(p @ (C1 * C1) @ p + q @ (C2 * C2) @ q - 2 * ((C1 @ P) * (P @ C2)).sum())
 
 def _to_unit_square(x: np.ndarray) -> np.ndarray:
     return util.normalize_coords_to_unit_square(np.asarray(x, dtype=float))
