@@ -71,7 +71,7 @@ pre = mgw.mgw_preprocess(
 
 Next, we run `mgw.mgw_align_core` on the data **pre** to both infer the neural fields, learn metric tensors, and align the result with Gromov-Wasserstein.
 
-**Recommended: If the default `DEFAULT_EPS` works poorly, it likely represents ill-conditioned Jacobians (i.e. in fully homogenous expression regions). Try larger `DEFAULT_EPS` (e.g. `1e0`) if this is the case to improve the conditioning.**
+We recommend trying larger `DEFAULT_EPS` (e.g. `1e0`) if the setting below yields a weak alignment. The Jacobian may become singular in degenerate cases such as fully constant expression regions, so larger `DEFAULT_EPS` can significantly improve Jacobian conditioning and alignment quality.
 
 ```python
 
