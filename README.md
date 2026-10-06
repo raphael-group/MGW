@@ -70,6 +70,9 @@ pre = mgw.mgw_preprocess(
 ### **3. Run MGW**
 
 Next, we run `mgw.mgw_align_core` on the data **pre** to both infer the neural fields, learn metric tensors, and align the result with Gromov-Wasserstein.
+
+**Recommended: If the default `DEFAULT_EPS` works poorly, it likely represents ill-conditioned Jacobians (i.e. in fully homogenous expression regions). Try larger `DEFAULT_EPS` (e.g. `1e0`) if this is the case to improve the conditioning.**
+
 ```python
 
 PHI_ARC = (128,256,256,128)
@@ -99,7 +102,7 @@ out = mgw.mgw_align_core(
 Here, the key parameters are
 - `PHI_ARC`: Layers of the MLP
 - `KNN_K`: Resolution of the K nearest neighbor graph used for Riemannian geodesics
-- `DEFAULT_EPS`: Epsilon for stability of Jacobian. Generally not an issue, and smaller yields more faithful Riemannian geodesics (e.g. 1e-5 for mouse embryo).
+- `DEFAULT_EPS`: Epsilon for stability of Jacobian. Smaller yields more faithful Riemannian geodesics (e.g. 1e-5 for mouse embryo), but in case of degenerate Jacobian larger is better.
 - `DEFAULT_GW_PARAMS`: Default parameters for the optimal transport solver of **ott jax**
 - `DEFAULT_LR`: Learning-rate for the network.
 - `DEFAULT_ITER`: Number of training iterations for the network.
