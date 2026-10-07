@@ -46,11 +46,11 @@ st = ad.read_h5ad(ST_PATH)
 msi = ad.read_h5ad(MSI_PATH)
 ```
 ### **2. Run MGW preprocessing**
-Call `mgw.mgw_preprocess` on two AnnDatas. 
+Call `mgw.mgw_preprocess` on two AnnDatas. This is unlikely to be an all encompassing across arbitrary modalities which each have their own preprocessing and QC protocols. In our demos, we offered a few simple examples of such steps for transcriptomics and metabolomics which precede alignment. If you want your raw `st.X` and `msi.X` to be run as-is (e.g. with some feature processing of your own) without further processing, set `use_cca_feeler=False`, `use_pca_X/Z=False`, and `log1p_X/Z=False`.
 
 You can run PCA (will default to pre-computed PCA if already done) with `PCA_comp` components, and an additional `CCA` step for multimodal data. Set `use_cca_feeler=True` for this CCA step, which involves basic/coarse feeler alignment (`spatial_only: bool = True` to do a spatial-only feeler, `feature_only = True` to do a feature-only feeler, or if both `False` a basic spatial-feature feeler). This subsets feature dimensions which are correlated across modalities, and you can specify the number of final CCA dimensions with `CCA_comp`.
 
-To run on the raw `st.X` and `msi.X` as-is without processing, set `use_cca_feeler=False`, `use_pca_X/Z=False`, and `log1p_X/Z=False`. We do not assume common/joint features in multimodal data generally and do independent internal PCA steps. For unimodal (e.g. transcriptomics-transcriptomics) we recommend an external joint PCA: see, e.g. `experiments/mgw_mouse_embryo.ipynb` for an example of this pre-processing.
+ We do not assume common/joint features in multimodal data generally and do independent internal PCA steps. For unimodal (e.g. transcriptomics-transcriptomics) alignment we **strongly** recommend an external joint PCA across the two datasets: see, e.g. `experiments/mgw_mouse_embryo.ipynb` for an example of this pre-processing. Lastly, for unimodal alignment we recommend using the MGW cost matrix as the geometric term in an FGW as these formulations can use rich cross-data feature similarity in addition to intrinsic geometry.
 
 ```python
 import mgw.mgw as mgw
